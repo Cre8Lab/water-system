@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>水質與微生物檢驗數據系統</title>
+  <!-- 引入 Tailwind CSS 與 Vue 3 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- 引入 LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- 引入 Firebase SDK (CDN) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, doc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // 您的真實 Firebase 配置
+    const firebaseConfig = {
+      apiKey: "AIzaSyChoEkN6YGQdwZuJPMiBcCubDHBEvsSMb0",
+      authDomain: "lab-water-system.firebaseapp.com",
+      projectId: "lab-water-system",
+      storageBucket: "lab-water-system.firebasestorage.app",
+      messagingSenderId: "368140211763",
+      appId: "1:368140211763:web:19ae6f3c89e2cddc983546"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    window.db = getFirestore(app);
+    window.fs = { collection, getDocs, doc, getDoc, addDoc };
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
+</head>
+<body class="bg-slate-100 min-h-screen p-3 sm:p-5 text-slate-800 antialiased">
+  <div id="app" class="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+    
+    <!-- 頂部標題列 -->
+    <div class="bg-slate-900 text-white px-5 py-4 flex justify-between items-center">
+      <div>
+        <h1 class="text-base font-bold tracking-wide">檢驗數據即時查詢</h1>
+        <p class="text-xs text-slate-400 mt-0.5" v-if="user.name">
+          登入者：{{ user.name }} 
+          <span class="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold" :class="user.role === 'admin' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'">
+            {{ user.role === 'admin' ? '主管權限' : '業務權限' }}
+          </span>
+        </p>
+      </div>
+      <div v-if="loading" class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+    </div>
+
+    <!-- 狀態一：身分檢查中 -->
+    <div v-if="checking" class="text-center py-16 px-4">
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent mb-3"></div>
+      <p class="text-sm text-gray-500 font-medium">正在驗證 LINE 帳號授權...</p>
+    </div>
+
+    <!-- 狀態二：未獲授權 -->
+    <div v-else-if="!authorized" class="p-8 text-center">
+      <div class="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-black">✕</div>
+      <h2 class="text-base font-bold text-slate-800">未在白名單授權中</h2>
+      <p class="text-xs text-slate-500 mt-2">請聯繫系統管理員將您的 LINE ID 加入白名單：</p>
+      <div class="mt-4 p-2.5 bg-slate-100 rounded-lg text-xs font-mono text-slate-600 break-all select-all border">
+        {{ user.lineId }}
+      </div>
+    </div>
+
+    <!-- 狀態三：主查詢介面 -->
+    <div v-else class="p-5">
+      
+      <!-- 系統雙分頁切換按鈕 -->
+      <div class="flex rounded-xl bg-slate-100 p-1 mb-5 border border-slate-200">
+        <button @click="switchTab('water')" 
+          :class="currentTab === 'water' ? 'bg-white shadow text-blue-600 font-bold' : 'text-slate-500 font-medium'" 
+          class="flex-1 py-2.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5">
+          <span>💧 水質數據</span>
+        </button>
+        <button @click="switchTab('microbio')" 
+          :class="currentTab === 'microbio' ? 'bg-white shadow text-emerald-600 font-bold' : 'text-slate-500 font-medium'" 
+          class="flex-1 py-2.5 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5">
+          <span>🦠 微生物數據</span>
+        </button>
+      </div>
+
+      <!-- 篩選條件區域 -->
+      <div class="space-y-3.5 mb-6">
+        
+        <!-- 業務員 (主管可自由選業務或全部，業務鎖定自己) -->
+        <div v-if="user.role === 'admin'">
+          <label class="block text-xs font-bold text-slate-600 mb-1">業務同仁</label>
+          <select v-model="selectedRep" @change="onRepChange" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="ALL">全部業務 (主管檢視模式)</option>
+            <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
+          </select>
+        </div>
+
+        <!-- 廠區代號 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">廠區 / 客戶代號</label>
+          <select v-model="selectedCustomer" @change="onCustomerChange" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="">-- 請選擇廠區 --</option>
+            <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
+          </select>
+        </div>
+
+        <!-- 取樣點 / 水質代號 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1">取樣點 / 瓶號代號</label>
+          <select v-model="selectedPoint" @change="fetchDetailData" :disabled="!selectedCustomer" 
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white disabled:bg-slate-100 disabled:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="">-- 請選擇取樣點 --</option>
+            <option v-for="p in pointList" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 查詢結果卡片區 -->
+      <div v-if="currentResult" class="border border-slate-200 rounded-xl p-4 bg-slate-50/70 shadow-sm animate-fade-in">
+        <div class="flex justify-between items-center text-[11px] text-slate-500 border-b border-slate-200 pb-2 mb-3">
+          <span>分析日：<b>{{ currentResult.testDate }}</b></span>
+          <span v-if="currentResult.sampleDate">取樣日：<b>{{ currentResult.sampleDate }}</b></span>
+        </div>
+
+        <!-- 1. 水質卡片 -->
+        <div v-if="currentTab === 'water'" class="space-y-3">
+          <div class="grid grid-cols-2 gap-2.5">
+            <div class="bg-white p-3 rounded-lg border border-slate-200 text-center shadow-xs">
+              <span class="text-[11px] text-slate-400 font-medium block">pH 值</span>
+              <span class="text-xl font-black text-blue-600">{{ currentResult.ph || '-' }}</span>
+            </div>
+            <div class="bg-white p-3 rounded-lg border border-slate-200 text-center shadow-xs">
+              <span class="text-[11px] text-slate-400 font-medium block">導電度 (Cond.)</span>
+              <span class="text-xl font-black text-blue-600">{{ currentResult.cond || '-' }}</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">總硬度 (T-H)</span>
+              <span class="font-bold">{{ currentResult.th || '-' }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">鈣硬度 (Ca-H)</span>
+              <span class="font-bold">{{ currentResult.caH || '-' }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">全鐵 (TFe)</span>
+              <span class="font-bold">{{ currentResult.tFe || '-' }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">濁度</span>
+              <span class="font-bold">{{ currentResult.turbidity || '-' }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">氯化鹽 (Cl)</span>
+              <span class="font-bold">{{ currentResult.cl || '-' }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">矽酸鹽 (SiO2)</span>
+              <span class="font-bold">{{ currentResult.sio2 || '-' }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. 微生物卡片 -->
+        <div v-if="currentTab === 'microbio'" class="space-y-3">
+          <div class="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl text-center">
+            <span class="text-[11px] text-emerald-700 font-bold tracking-wide uppercase block">換算總菌數 (CFU/mL)</span>
+            <span class="text-2xl font-black text-emerald-600 mt-1 block">{{ currentResult.cfu || '0' }}</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">培養皿讀數</span>
+              <span class="font-bold">{{ currentResult.colonyCount }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">稀釋次方</span>
+              <span class="font-bold">×10<sup>{{ currentResult.dilutionExp }}</sup></span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">餘氯</span>
+              <span class="font-bold">{{ currentResult.freeCl || '-' }}</span>
+            </div>
+            <div class="bg-white p-2.5 rounded-lg border border-slate-200 flex justify-between">
+              <span class="text-slate-500">總氯</span>
+              <span class="font-bold">{{ currentResult.totalCl || '-' }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    createApp({
+      setup() {
+        const checking = ref(true);
+        const authorized = ref(false);
+        const loading = ref(false);
+        const user = ref({ lineId: '', name: '', role: '', allowedCustomers: [] });
+        
+        const currentTab = ref('water');
+        const selectedRep = ref('ALL');
+        const selectedCustomer = ref('');
+        const selectedPoint = ref('');
+
+        const rawDataList = ref([]);
+        const currentResult = ref(null);
+
+        // 初始化函式
+        const initSystem = async () => {
+          try {
+            // 1. 初始化 LINE LIFF
+            await liff.init({ liffId: "2012237984-DUU144BJ" });
+            if (!liff.isLoggedIn()) {
+              liff.login();
+              return;
+            }
+            const profile = await liff.getProfile();
+            user.value.lineId = profile.userId;
+
+            // 2. 向 Firebase 比對白名單
+            const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
+            if (userSnap.exists()) {
+              authorized.value = true;
+              Object.assign(user.value, userSnap.data());
+              if (user.value.role !== 'admin') {
+                selectedRep.value = user.value.name;
+              }
+              await loadSystemData();
+            }
+          } catch (err) {
+            console.error("初始化失敗:", err);
+          } finally {
+            checking.value = false;
+          }
+        };
+
+        // 監聽 Firebase 模組載入就緒
+        if (window.db && window.fs) {
+          initSystem();
+        } else {
+          window.addEventListener('firebase-ready', initSystem, { once: true });
+        }
+
+        // 載入當前系統數據清單 (用於下拉選單)
+        const loadSystemData = async () => {
+          loading.value = true;
+          const collName = currentTab.value === 'water' ? 'water_data' : 'microbio_data';
+          const snap = await window.fs.getDocs(window.fs.collection(window.db, collName));
+          const list = [];
+          snap.forEach(doc => list.push(doc.data()));
+          rawDataList.value = list;
+          loading.value = false;
+        };
+
+        // 切換系統分頁
+        const switchTab = async (tab) => {
+          if (currentTab.value === tab) return;
+          currentTab.value = tab;
+          selectedPoint.value = '';
+          currentResult.value = null;
+          await loadSystemData();
+        };
+
+        // 業務清單
+        const repList = computed(() => {
+          const reps = new Set();
+          rawDataList.value.forEach(d => { if (d.salesRep) reps.add(d.salesRep); });
+          return Array.from(reps);
+        });
+
+        // 廠區選單連動過濾
+        const filteredCustomers = computed(() => {
+          let list = rawDataList.value;
+          if (user.value.role !== 'admin') {
+            list = list.filter(d => user.value.allowedCustomers.includes(d.customer));
+          } else if (selectedRep.value !== 'ALL') {
+            list = list.filter(d => d.salesRep === selectedRep.value);
+          }
+          const customers = new Set();
+          list.forEach(d => { if (d.customer) customers.add(d.customer); });
+          return Array.from(customers);
+        });
+
+        // 取樣點連動過濾
+        const pointList = computed(() => {
+          if (!selectedCustomer.value) return [];
+          const points = new Set();
+          rawDataList.value
+            .filter(d => d.customer === selectedCustomer.value)
+            .forEach(d => { if (d.samplePoint) points.add(d.samplePoint); });
+          return Array.from(points);
+        });
+
+        const onRepChange = () => {
+          selectedCustomer.value = '';
+          selectedPoint.value = '';
+          currentResult.value = null;
+        };
+
+        const onCustomerChange = () => {
+          selectedPoint.value = '';
+          currentResult.value = null;
+        };
+
+        // 選定特定樣品後呈顯數值並記錄 Log
+        const fetchDetailData = () => {
+          if (!selectedPoint.value) return;
+          const found = rawDataList.value.find(d => 
+            d.customer === selectedCustomer.value && d.samplePoint === selectedPoint.value
+          );
+          currentResult.value = found;
+
+          // 背景寫入查詢日誌 (Audit Log)
+          window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
+            timestamp: new Date().toISOString(),
+            lineId: user.value.lineId,
+            userName: user.value.name,
+            system: currentTab.value,
+            customer: selectedCustomer.value,
+            samplePoint: selectedPoint.value
+          });
+        };
+
+        return {
+          checking, authorized, loading, user, currentTab,
+          selectedRep, selectedCustomer, selectedPoint,
+          currentResult, switchTab, repList, filteredCustomers, pointList,
+          onRepChange, onCustomerChange, fetchDetailData
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
