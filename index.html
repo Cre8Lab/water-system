@@ -26,172 +26,170 @@
     window.dispatchEvent(new Event('firebase-ready'));
   </script>
   <style>
-    /* 隱藏滾動條但保持滑動功能 */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .grab-cursor { cursor: grab; }
+    .grab-cursor:active { cursor: grabbing; user-select: none; }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-800 antialiased p-2 sm:p-4">
-  <div id="app" class="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
+<body class="bg-slate-100 min-h-screen text-slate-700 antialiased p-2 sm:p-4">
+  <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
     
-    <!-- 頂部清爽現代藍漸層導航列 (方案 A) -->
-    <div class="bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white px-4 py-3 flex justify-between items-center shadow-sm">
+    <!-- 頂部清爽柔和導航列 -->
+    <div class="bg-slate-700 text-slate-100 px-4 py-3 flex justify-between items-center border-b border-slate-600">
       <div>
-        <h1 class="text-sm font-bold tracking-wide">檢驗數據查詢系統</h1>
-        <p class="text-[11px] text-blue-100 mt-0.5" v-if="user.name">
+        <h1 class="text-sm font-semibold tracking-wide text-white">檢驗數據查詢系統</h1>
+        <p class="text-[11px] text-slate-300 mt-0.5" v-if="user.name">
           {{ user.name }} · 
-          <span class="font-semibold text-white bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
-            {{ user.role === 'admin' ? '主管權限' : '業務權限' }}
+          <span class="font-medium text-slate-200 bg-slate-600/80 px-1.5 py-0.5 rounded text-[10px]">
+            {{ user.role === 'admin' ? '主管' : '業務' }}
           </span>
         </p>
       </div>
 
-      <!-- 緊湊型分頁按鈕 (膠囊切換) -->
-      <div class="flex bg-black/20 p-0.5 rounded-lg border border-white/20">
+      <!-- 分頁切換 -->
+      <div class="flex bg-slate-800/60 p-0.5 rounded-lg border border-slate-600">
         <button @click="switchTab('water')" 
-          :class="currentTab === 'water' ? 'bg-white text-blue-600 font-bold shadow' : 'text-blue-100 hover:text-white'" 
+          :class="currentTab === 'water' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
           class="px-2.5 py-1 text-xs rounded-md transition-all">💧 水質</button>
         <button @click="switchTab('microbio')" 
-          :class="currentTab === 'microbio' ? 'bg-white text-emerald-600 font-bold shadow' : 'text-blue-100 hover:text-white'" 
+          :class="currentTab === 'microbio' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
           class="px-2.5 py-1 text-xs rounded-md transition-all">🦠 微生物</button>
       </div>
     </div>
 
-    <!-- 狀態：檢查中 (極速啟動) -->
+    <!-- 狀態：檢查中 -->
     <div v-if="checking" class="text-center py-16 px-4">
-      <div class="inline-block animate-spin rounded-full h-7 w-7 border-3 border-blue-600 border-t-transparent mb-2"></div>
-      <p class="text-xs text-gray-500 font-medium">正在啟動系統...</p>
+      <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-500 border-t-transparent mb-2"></div>
+      <p class="text-xs text-slate-500">正在啟動系統...</p>
     </div>
 
     <!-- 狀態：未授權 -->
     <div v-else-if="!authorized" class="p-8 text-center">
-      <div class="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-2 text-lg font-bold">✕</div>
+      <div class="w-10 h-10 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-2 text-lg font-bold border border-slate-200">✕</div>
       <h2 class="text-sm font-bold text-slate-800">未在白名單授權中</h2>
       <p class="text-xs text-slate-500 mt-1">請提供此 LINE ID 給管理員加入：</p>
-      <div class="mt-3 p-2 bg-slate-100 rounded text-[11px] font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
+      <div class="mt-3 p-2 bg-slate-50 rounded text-[11px] font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
     </div>
 
     <!-- 狀態：主查詢介面 -->
-    <div v-else class="p-4 space-y-3">
+    <div v-else class="p-3.5 space-y-3">
       
-      <!-- 篩選選單 (嚴格使用 Excel 原標題，一行兩個選項) -->
-      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
+      <!-- 篩選選單 (一行兩列排版) -->
+      <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2.5">
         
-        <!-- 第一行：業務員 ｜ 客戶代號 (一行兩列) -->
+        <!-- 第一行：業務員 ｜ 客戶代號 -->
         <div class="grid grid-cols-2 gap-2">
-          <!-- 1. 業務員 -->
+          <!-- 業務員 -->
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">業務員</label>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">業務員</label>
             <select v-if="user.role === 'admin'" v-model="selectedRep" @change="onRepChange" 
-              class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+              class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:border-slate-500">
               <option value="ALL">全部業務員</option>
               <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
             </select>
-            <div v-else class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-slate-100 text-slate-600 font-bold">
+            <div v-else class="w-full border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-slate-100 text-slate-700 font-semibold">
               {{ user.name }}
             </div>
           </div>
 
-          <!-- 2. 客戶代號 -->
+          <!-- 客戶代號 -->
           <div>
-            <label class="block text-xs font-bold text-slate-700 mb-1">客戶代號</label>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">客戶代號</label>
             <select v-model="selectedCustomer" @change="onCustomerChange" 
-              class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+              class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:border-slate-500">
               <option value="">-- 請選擇 --</option>
               <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
             </select>
           </div>
         </div>
 
-        <!-- 第二行：取樣點 (整行寬度) -->
+        <!-- 第二行：取樣點 -->
         <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">取樣點</label>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">取樣點</label>
           <select v-model="selectedPoint" @change="onPointChange" :disabled="!selectedCustomer" 
-            class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white disabled:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500">
+            class="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-xs bg-white text-slate-700 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-slate-500">
             <option value="">-- 請選擇取樣點 --</option>
             <option v-for="p in pointList" :key="p" :value="p">{{ p }}</option>
           </select>
         </div>
       </div>
 
-      <!-- 查詢結果：左右滑動橫向輪播卡片 (最新 5 期歷史數據比對) -->
+      <!-- 查詢結果：左右滑動輪播泡泡卡片 (支援手機觸控 + 電腦滑鼠拖曳/點擊) -->
       <div v-if="historyList.length > 0" class="space-y-2">
         <div class="flex justify-between items-center text-xs text-slate-500 px-1">
-          <span class="font-bold text-slate-700">歷史檢驗紀錄 (共 {{ historyList.length }} 期)</span>
-          <span class="text-[11px] text-blue-600 flex items-center gap-1">
-            <span>👈 左右滑動比對</span>
-          </span>
+          <span class="font-semibold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
+          
+          <!-- 電腦與手機皆通用的切換按鈕 -->
+          <div class="flex items-center gap-1.5">
+            <button @click="scrollPrev" title="上一期" class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold transition">‹</button>
+            <span class="text-[11px] text-slate-400">左右滑動</span>
+            <button @click="scrollNext" title="下一期" class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold transition">›</button>
+          </div>
         </div>
 
-        <!-- 水平滾動輪播容器 (Snap 滑動效果) -->
-        <div class="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-2 pt-1 no-scrollbar -mx-1 px-1">
+        <!-- 橫向輪播容器 (掛載拖曳與滾輪監聽) -->
+        <div ref="sliderRef" 
+          @mousedown="startDrag" 
+          @mouseleave="stopDrag" 
+          @mouseup="stopDrag" 
+          @mousemove="onDrag"
+          class="flex overflow-x-auto snap-x snap-mandatory gap-2.5 pb-2 pt-0.5 no-scrollbar grab-cursor -mx-1 px-1">
+          
           <div v-for="(item, idx) in historyList" :key="idx" 
-            class="w-[88%] sm:w-[92%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-md space-y-3">
+            class="w-[88%] sm:w-[92%] flex-shrink-0 snap-center border border-slate-200 rounded-lg p-3 bg-white shadow-xs space-y-2.5 select-none">
             
-            <!-- 卡片頂部：精簡取樣日標籤 -->
+            <!-- 卡片頂部：精簡取樣日 -->
             <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-              <span class="text-xs font-bold text-slate-800">
-                取樣日：<span class="text-blue-600 text-sm">{{ formatDate(item.sampleDate) }}</span>
+              <span class="text-xs font-semibold text-slate-700">
+                取樣日：<span class="text-slate-900 font-bold">{{ formatDate(item.sampleDate) }}</span>
               </span>
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold" 
-                :class="idx === 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'">
-                {{ idx === 0 ? '最新一期' : '前期紀錄 ' + idx }}
+              <span class="px-2 py-0.5 rounded text-[10px] font-medium" 
+                :class="idx === 0 ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 border border-slate-200'">
+                {{ idx === 0 ? '最新一期' : '前期 ' + idx }}
               </span>
             </div>
 
-            <!-- 1. 水質卡片數據 (完整動態指標，4 位四捨五入) -->
-            <div v-if="currentTab === 'water'" class="space-y-2.5">
-              <!-- 重點指標 pH 與 導電度 -->
-              <div class="grid grid-cols-2 gap-2" v-if="item.items && (item.items['pH'] || item.items['Cond.'])">
-                <div class="bg-blue-50/70 p-2 rounded-lg border border-blue-100 text-center">
-                  <span class="text-[11px] text-blue-700 font-semibold block">pH</span>
-                  <span class="text-lg font-black text-blue-600">{{ formatNumber(item.items['pH']) }}</span>
+            <!-- 1. 水質數據 -->
+            <div v-if="currentTab === 'water'" class="space-y-2">
+              <div class="grid grid-cols-2 gap-2" v-if="hasKey(item, 'pH') || hasKey(item, 'Cond.')">
+                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="hasKey(item, 'pH')">
+                  <span class="text-[11px] text-slate-500 font-medium block">pH</span>
+                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getVal(item, 'pH')) }}</span>
                 </div>
-                <div class="bg-blue-50/70 p-2 rounded-lg border border-blue-100 text-center">
-                  <span class="text-[11px] text-blue-700 font-semibold block">導電度 (Cond.)</span>
-                  <span class="text-lg font-black text-blue-600">{{ formatNumber(item.items['Cond.']) }}</span>
+                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="hasKey(item, 'Cond.')">
+                  <span class="text-[11px] text-slate-500 font-medium block">導電度 (Cond.)</span>
+                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getVal(item, 'Cond.')) }}</span>
                 </div>
               </div>
 
-              <!-- 全部檢驗項目兩欄網格 (杜絕字體擠壓重疊) -->
-              <div class="grid grid-cols-2 gap-1.5 text-xs">
-                <template v-for="(val, key) in item.items" :key="key">
-                  <div v-if="key !== 'pH' && key !== 'Cond.'" class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-                    <span class="text-slate-500 font-medium pr-1 truncate" :title="key">{{ key }}</span>
-                    <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
+              <div class="grid grid-cols-2 gap-1 text-xs">
+                <template v-for="(val, key) in getDisplayItems(item)" :key="key">
+                  <div v-if="!isCoreKey(key)" class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
+                    <span class="text-slate-500 pr-1 truncate" :title="key">{{ key }}</span>
+                    <span class="font-semibold text-slate-700 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
                   </div>
                 </template>
               </div>
             </div>
 
-            <!-- 2. 微生物卡片數據 (科學上標規範與 ppm 標籤) -->
-            <div v-if="currentTab === 'microbio'" class="space-y-2.5">
-              <!-- 總菌數大字牌 (培養皿讀數與次方合成帶有上標的標準格式) -->
-              <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
-                <span class="text-[11px] text-emerald-800 font-bold block uppercase tracking-wider">總菌數 (CFU/mL)</span>
-                <span class="text-2xl font-black text-emerald-600 mt-1 block">
-                  {{ item.colonyCount }} × 10<sup class="text-base font-bold">{{ item.dilutionExp !== null && item.dilutionExp !== undefined ? item.dilutionExp : '0' }}</sup>
+            <!-- 2. 微生物數據 -->
+            <div v-if="currentTab === 'microbio'" class="space-y-2">
+              <div class="bg-slate-50 border border-slate-200 p-3 rounded-lg text-center">
+                <span class="text-[11px] text-slate-500 font-semibold block">總菌數 (CFU/mL)</span>
+                <span class="text-xl font-bold text-slate-800 mt-1 block">
+                  {{ item.colonyCount }} × 10<sup class="text-sm font-semibold">{{ item.dilutionExp !== null && item.dilutionExp !== undefined ? item.dilutionExp : '0' }}</sup>
                 </span>
-                <span class="text-[10px] text-emerald-600/80 mt-0.5 block font-mono">換算值：{{ item.cfu || '0' }}</span>
               </div>
 
-              <!-- 微生物各項數據 -->
               <div class="grid grid-cols-2 gap-1.5 text-xs">
-                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-                  <span class="text-slate-500">培養皿讀數</span>
-                  <span class="font-bold text-slate-800">{{ formatNumber(item.colonyCount) }}</span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-                  <span class="text-slate-500">稀釋次方</span>
-                  <span class="font-bold text-slate-800">×10<sup>{{ item.dilutionExp }}</sup></span>
-                </div>
-                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                <div class="flex justify-between items-center p-2 bg-slate-50/70 rounded border border-slate-100">
                   <span class="text-slate-500">餘氯 (ppm)</span>
-                  <span class="font-bold text-slate-800">{{ formatNumber(item.freeCl) }}</span>
+                  <span class="font-semibold text-slate-700">{{ formatNumber(item.freeCl) }}</span>
                 </div>
-                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                <div class="flex justify-between items-center p-2 bg-slate-50/70 rounded border border-slate-100">
                   <span class="text-slate-500">總氯 (ppm)</span>
-                  <span class="font-bold text-slate-800">{{ formatNumber(item.totalCl) }}</span>
+                  <span class="font-semibold text-slate-700">{{ formatNumber(item.totalCl) }}</span>
                 </div>
               </div>
             </div>
@@ -203,7 +201,7 @@
   </div>
 
   <script>
-    const { createApp, ref, computed } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
 
     createApp({
       setup() {
@@ -216,27 +214,93 @@
         const selectedCustomer = ref('');
         const selectedPoint = ref('');
 
-        // 核心改進：雙向資料記憶體快取 (解決切換延遲)
         const waterCache = ref([]);
         const microbioCache = ref([]);
         const historyList = ref([]);
+        const sliderRef = ref(null);
 
-        // 當前系統使用對應快取
+        // 電腦版滑鼠拖曳滾動邏輯
+        let isDown = false;
+        let startX = 0;
+        let scrollLeftVal = 0;
+
+        const startDrag = (e) => {
+          isDown = true;
+          startX = e.pageX - sliderRef.value.offsetLeft;
+          scrollLeftVal = sliderRef.value.scrollLeft;
+        };
+
+        const stopDrag = () => { isDown = false; };
+
+        const onDrag = (e) => {
+          if (!isDown) return;
+          e.preventDefault();
+          const x = e.pageX - sliderRef.value.offsetLeft;
+          const walk = (x - startX) * 1.5;
+          sliderRef.value.scrollLeft = scrollLeftVal - walk;
+        };
+
+        // 電腦版點擊按鈕左右切換卡片
+        const scrollPrev = () => {
+          if (sliderRef.value) {
+            sliderRef.value.scrollBy({ left: -sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
+          }
+        };
+
+        const scrollNext = () => {
+          if (sliderRef.value) {
+            sliderRef.value.scrollBy({ left: sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
+          }
+        };
+
+        // 電腦版滾輪轉換為水平滑動
+        onMounted(() => {
+          window.addEventListener('wheel', (e) => {
+            if (sliderRef.value && sliderRef.value.contains(e.target)) {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                sliderRef.value.scrollLeft += e.deltaY;
+              }
+            }
+          }, { passive: true });
+        });
+
         const rawDataList = computed(() => {
           return currentTab.value === 'water' ? waterCache.value : microbioCache.value;
         });
 
-        // 四捨五入最多4位，不足4位維持完全位數
+        const getDisplayItems = (item) => {
+          if (!item) return {};
+          if (item.items && typeof item.items === 'object' && Object.keys(item.items).length > 0) {
+            return item.items;
+          }
+          const meta = ['customer', 'salesRep', 'sampleDate', 'samplePoint', 'testDate', 'sampleTime', 'items'];
+          const res = {};
+          for (let k in item) {
+            if (!meta.includes(k) && item[k] !== null && item[k] !== undefined && item[k] !== '') {
+              res[k] = item[k];
+            }
+          }
+          return res;
+        };
+
+        const hasKey = (item, targetKey) => {
+          const items = getDisplayItems(item);
+          return Object.keys(items).some(k => k.toLowerCase() === targetKey.toLowerCase());
+        };
+
+        const getVal = (item, targetKey) => {
+          const items = getDisplayItems(item);
+          const found = Object.keys(items).find(k => k.toLowerCase() === targetKey.toLowerCase());
+          return found ? items[found] : '-';
+        };
+
+        const isCoreKey = (key) => {
+          const k = String(key).toLowerCase();
+          return k === 'ph' || k === 'cond.' || k === 'cond';
+        };
+
         const formatNumber = (val) => {
           if (val === null || val === undefined || val === '') return '-';
-          if (typeof val === 'number') {
-            const str = val.toString();
-            if (str.includes('.')) {
-              const decimals = str.split('.')[1].length;
-              if (decimals > 4) return parseFloat(val.toFixed(4));
-            }
-            return val;
-          }
           const num = Number(val);
           if (!isNaN(num) && String(val).trim() !== '') {
             const str = num.toString();
@@ -249,7 +313,6 @@
           return val;
         };
 
-        // 日期精簡化 (格式: 2026/10/21)
         const formatDate = (val) => {
           if (!val) return '-';
           const d = new Date(val);
@@ -262,7 +325,6 @@
           return String(val).replace(/T.*$/, '').trim();
         };
 
-        // 系統啟動：白名單驗證後，雙向並行預載入兩套數據，後續 0 毫秒秒切
         const initSystem = async () => {
           try {
             await liff.init({ liffId: "2012237984-DUU144BJ" });
@@ -274,7 +336,6 @@
             const profile = await liff.getProfile();
             user.value.lineId = profile.userId;
 
-            // 1. 白名單檢查
             const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
             if (userSnap.exists()) {
               authorized.value = true;
@@ -282,17 +343,14 @@
               if (user.value.role !== 'admin') {
                 selectedRep.value = user.value.name;
               }
-              // 立即關閉驗證畫面
               checking.value = false;
-
-              // 2. 雙向並行預載入，存入本地記憶體快取
               preloadAllData();
             } else {
               authorized.value = false;
               checking.value = false;
             }
           } catch (err) {
-            console.error("LIFF 驗證失敗:", err);
+            console.error(err);
             checking.value = false;
           }
         };
@@ -303,7 +361,6 @@
           window.addEventListener('firebase-ready', initSystem, { once: true });
         }
 
-        // 雙向並行預載入 (Promise.all 毫秒級完成)
         const preloadAllData = async () => {
           try {
             const [waterSnap, mbSnap] = await Promise.all([
@@ -319,27 +376,24 @@
             mbSnap.forEach(doc => mList.push(doc.data()));
             microbioCache.value = mList;
           } catch (e) {
-            console.error("載入失敗:", e);
+            console.error(e);
           }
         };
 
-        // 系統切換：0 毫秒秒切，保留業務員，重置客戶代號與取樣點
         const switchTab = (tab) => {
           if (currentTab.value === tab) return;
           currentTab.value = tab;
-          selectedCustomer.value = ''; // 回到 -- 請選擇 --
+          selectedCustomer.value = '';
           selectedPoint.value = '';
           historyList.value = [];
         };
 
-        // 業務員清單
         const repList = computed(() => {
           const reps = new Set();
           rawDataList.value.forEach(d => { if (d.salesRep) reps.add(d.salesRep); });
           return Array.from(reps);
         });
 
-        // 客戶代號清單 (依當前系統有採樣的客戶過濾)
         const filteredCustomers = computed(() => {
           let list = rawDataList.value;
           if (user.value.role !== 'admin') {
@@ -352,7 +406,6 @@
           return Array.from(customers);
         });
 
-        // 取樣點清單
         const pointList = computed(() => {
           if (!selectedCustomer.value) return [];
           const points = new Set();
@@ -373,25 +426,17 @@
           historyList.value = [];
         };
 
-        // 選定取樣點：自動篩選出「最新 5 期歷史數據」並按日期降冪排序
         const onPointChange = () => {
           if (!selectedPoint.value) {
             historyList.value = [];
             return;
           }
-          
-          // 找出同廠區、同取樣點的所有歷史紀錄
           const matched = rawDataList.value.filter(d => 
             d.customer === selectedCustomer.value && d.samplePoint === selectedPoint.value
           );
-
-          // 依取樣日降冪排序 (最新的在最前面)
           matched.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
-
-          // 取最新 5 期
           historyList.value = matched.slice(0, 5);
 
-          // 寫入查詢日誌
           window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
             timestamp: new Date().toISOString(),
             lineId: user.value.lineId,
@@ -407,7 +452,8 @@
           selectedRep, selectedCustomer, selectedPoint,
           historyList, switchTab, repList, filteredCustomers, pointList,
           onRepChange, onCustomerChange, onPointChange,
-          formatNumber, formatDate
+          formatNumber, formatDate, getDisplayItems, hasKey, getVal, isCoreKey,
+          sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag
         };
       }
     }).mount('#app');
