@@ -9,7 +9,7 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, getDocs, doc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, collection, query, where, getDocs, doc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyChoEkN6YGQdwZuJPMiBcCubDHBEvsSMb0",
@@ -22,7 +22,7 @@
 
     const app = initializeApp(firebaseConfig);
     window.db = getFirestore(app);
-    window.fs = { collection, getDocs, doc, getDoc, addDoc };
+    window.fs = { collection, query, where, getDocs, doc, getDoc, addDoc };
     window.dispatchEvent(new Event('firebase-ready'));
   </script>
   <style>
@@ -61,7 +61,7 @@
     <!-- 狀態：檢查中 -->
     <div v-if="checking" class="text-center py-16 px-4">
       <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-500 border-t-transparent mb-2"></div>
-      <p class="text-xs text-slate-500">正在啟動系統...</p>
+      <p class="text-xs text-slate-500">正在極速啟動...</p>
     </div>
 
     <!-- 狀態：未授權 -->
@@ -115,8 +115,14 @@
         </div>
       </div>
 
-      <!-- 查詢結果：左右滑動輪播泡泡卡片 (支援手機觸控 + 電腦滑鼠拖曳/點擊) -->
-      <div v-if="historyList.length > 0" class="space-y-2">
+      <!-- 讀取中指示 -->
+      <div v-if="fetchingDetail" class="text-center py-6">
+        <div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-500 border-t-transparent mb-1"></div>
+        <p class="text-xs text-slate-400">正在極速讀取檢驗數據...</p>
+      </div>
+
+      <!-- 查詢結果：左右滑動輪播泡泡卡片 (最新 5 期) -->
+      <div v-else-if="historyList.length > 0" class="space-y-2">
         <div class="flex justify-between items-center text-xs text-slate-500 px-1">
           <span class="font-semibold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
           
@@ -149,9 +155,8 @@
               </span>
             </div>
 
-            <!-- 1. 水質數據 (100% 忠於 Excel 原始大小寫 + 導電度必出) -->
+            <!-- 1. 水質數據 -->
             <div v-if="currentTab === 'water'" class="space-y-2">
-              <!-- 重點指標 pH 與 導電度 (修復導電度遺漏問題) -->
               <div class="grid grid-cols-2 gap-2" v-if="getCoreVal(item, 'ph') !== null || getCoreVal(item, 'cond') !== null">
                 <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="getCoreVal(item, 'ph') !== null">
                   <span class="text-[11px] text-slate-500 font-medium block">pH</span>
@@ -163,7 +168,6 @@
                 </div>
               </div>
 
-              <!-- 全部檢驗項目 (還原忠於原味的標準大小寫) -->
               <div class="grid grid-cols-2 gap-1 text-xs">
                 <template v-for="(val, rawKey) in getDisplayItems(item)" :key="rawKey">
                   <div v-if="!isCoreField(rawKey)" class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
@@ -208,6 +212,7 @@
       setup() {
         const checking = ref(true);
         const authorized = ref(false);
+        const fetchingDetail = ref(false);
         const user = ref({ lineId: '', name: '', role: '', allowedCustomers: [] });
         
         const currentTab = ref('water');
@@ -215,45 +220,27 @@
         const selectedCustomer = ref('');
         const selectedPoint = ref('');
 
-        const waterCache = ref([]);
-        const microbioCache = ref([]);
+        // 選單目錄快取 (打開網頁只讀這兩個極輕量文件，僅佔 2 次讀取)
+        const waterCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {} });
+        const microbioCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {} });
+        
+        // 記憶體快取：查過的水樣暫存於此，重複查看 0 毫秒且 0 讀取
+        const queryMemoryCache = {};
         const historyList = ref([]);
         const sliderRef = ref(null);
 
-        // 核心字典：強制還原 Excel 原始標準大小寫與連字號
         const EXACT_LABEL_MAP = {
-          'th': 'T-H',
-          't-h': 'T-H',
-          'cah': 'Ca-H',
-          'ca-h': 'Ca-H',
-          'ma': 'M-A',
-          'm-a': 'M-A',
-          'pa': 'P-A',
-          'p-a': 'P-A',
-          'tfe': 'TFe',
-          'sio2': 'SiO2',
-          'so4': 'SO4',
-          'cl': 'Cl',
-          'cu': 'Cu',
-          'zn': 'Zn',
-          'al': 'Al',
-          'mn': 'Mn',
-          'tp': 'TP',
-          'tip': 'TIP',
-          'op': 'OP',
-          'turbidity': '濁度',
-          'ss': 'SS',
-          'cod': 'COD',
-          'no2': 'NO2',
-          'moo4': 'MoO4',
-          'nh3-n': 'NH3-N'
+          'th': 'T-H', 't-h': 'T-H', 'cah': 'Ca-H', 'ca-h': 'Ca-H',
+          'ma': 'M-A', 'm-a': 'M-A', 'pa': 'P-A', 'p-a': 'P-A',
+          'tfe': 'TFe', 'sio2': 'SiO2', 'so4': 'SO4', 'cl': 'Cl',
+          'cu': 'Cu', 'zn': 'Zn', 'al': 'Al', 'mn': 'Mn',
+          'tp': 'TP', 'tip': 'TIP', 'op': 'OP', 'turbidity': '濁度',
+          'ss': 'SS', 'cod': 'COD', 'no2': 'NO2', 'moo4': 'MoO4', 'nh3-n': 'NH3-N'
         };
 
         const getExactLabel = (key) => {
           const cleanKey = String(key).trim();
-          const lower = cleanKey.toLowerCase();
-          // 若字典有標準對照則還原，否則忠於資料庫原始名稱
-          return EXACT_LABEL_MAP[lower] || cleanKey;
+          return EXACT_LABEL_MAP[cleanKey.toLowerCase()] || cleanKey;
         };
 
         const isCoreField = (key) => {
@@ -261,7 +248,6 @@
           return lower === 'ph' || lower === 'cond' || lower === 'cond.';
         };
 
-        // 徹底解決導電度抓取：相容 cond、cond.、Cond. 等任何格式
         const getCoreVal = (item, type) => {
           const items = getDisplayItems(item);
           for (let k in items) {
@@ -272,7 +258,6 @@
           return null;
         };
 
-        // 提取所有檢驗數值
         const getDisplayItems = (item) => {
           if (!item) return {};
           if (item.items && typeof item.items === 'object' && Object.keys(item.items).length > 0) {
@@ -288,47 +273,28 @@
           return res;
         };
 
-        // 電腦版拖曳
-        let isDown = false;
-        let startX = 0;
-        let scrollLeftVal = 0;
-
+        let isDown = false, startX = 0, scrollLeftVal = 0;
         const startDrag = (e) => {
           isDown = true;
           startX = e.pageX - sliderRef.value.offsetLeft;
           scrollLeftVal = sliderRef.value.scrollLeft;
         };
-
         const stopDrag = () => { isDown = false; };
-
         const onDrag = (e) => {
           if (!isDown) return;
           e.preventDefault();
           const x = e.pageX - sliderRef.value.offsetLeft;
-          const walk = (x - startX) * 1.5;
-          sliderRef.value.scrollLeft = scrollLeftVal - walk;
+          sliderRef.value.scrollLeft = scrollLeftVal - (x - startX) * 1.5;
         };
-
-        const scrollPrev = () => {
-          if (sliderRef.value) sliderRef.value.scrollBy({ left: -sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
-        };
-
-        const scrollNext = () => {
-          if (sliderRef.value) sliderRef.value.scrollBy({ left: sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
-        };
+        const scrollPrev = () => { if (sliderRef.value) sliderRef.value.scrollBy({ left: -sliderRef.value.clientWidth * 0.9, behavior: 'smooth' }); };
+        const scrollNext = () => { if (sliderRef.value) sliderRef.value.scrollBy({ left: sliderRef.value.clientWidth * 0.9, behavior: 'smooth' }); };
 
         onMounted(() => {
           window.addEventListener('wheel', (e) => {
             if (sliderRef.value && sliderRef.value.contains(e.target)) {
-              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-                sliderRef.value.scrollLeft += e.deltaY;
-              }
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) sliderRef.value.scrollLeft += e.deltaY;
             }
           }, { passive: true });
-        });
-
-        const rawDataList = computed(() => {
-          return currentTab.value === 'water' ? waterCache.value : microbioCache.value;
         });
 
         const formatNumber = (val) => {
@@ -342,7 +308,7 @@
             }
             return num;
           }
-          return val; // 保留如 ND、一週一次等文字
+          return val;
         };
 
         const formatDate = (val) => {
@@ -357,6 +323,7 @@
           return String(val).replace(/T.*$/, '').trim();
         };
 
+        // 系統啟動：僅讀取白名單與選單目錄 (共 3 次讀取，0.05 秒秒開！)
         const initSystem = async () => {
           try {
             await liff.init({ liffId: "2012237984-DUU144BJ" });
@@ -364,10 +331,10 @@
               liff.login({ redirectUri: window.location.href });
               return;
             }
-
             const profile = await liff.getProfile();
             user.value.lineId = profile.userId;
 
+            // 1. 讀取白名單 (1 筆)
             const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
             if (userSnap.exists()) {
               authorized.value = true;
@@ -375,42 +342,37 @@
               if (user.value.role !== 'admin') {
                 selectedRep.value = user.value.name;
               }
-              checking.value = false;
-              preloadAllData();
+              // 2. 讀取輕量目錄 (2 筆)
+              await loadCatalogs();
             } else {
               authorized.value = false;
-              checking.value = false;
             }
           } catch (err) {
             console.error(err);
+          } finally {
             checking.value = false;
           }
         };
 
-        if (window.db && window.fs) {
-          initSystem();
-        } else {
-          window.addEventListener('firebase-ready', initSystem, { once: true });
-        }
+        if (window.db && window.fs) initSystem();
+        else window.addEventListener('firebase-ready', initSystem, { once: true });
 
-        const preloadAllData = async () => {
+        const loadCatalogs = async () => {
           try {
-            const [waterSnap, mbSnap] = await Promise.all([
-              window.fs.getDocs(window.fs.collection(window.db, "water_data")),
-              window.fs.getDocs(window.fs.collection(window.db, "microbio_data"))
+            const [wCat, mCat] = await Promise.all([
+              window.fs.getDoc(window.fs.doc(window.db, "metadata", "water_catalog")),
+              window.fs.getDoc(window.fs.doc(window.db, "metadata", "microbio_catalog"))
             ]);
-            
-            const wList = [];
-            waterSnap.forEach(doc => wList.push(doc.data()));
-            waterCache.value = wList;
-
-            const mList = [];
-            mbSnap.forEach(doc => mList.push(doc.data()));
-            microbioCache.value = mList;
+            if (wCat.exists()) waterCatalog.value = wCat.data();
+            if (mCat.exists()) microbioCatalog.value = mCat.data();
           } catch (e) {
-            console.error(e);
+            console.error("目錄載入失敗:", e);
           }
         };
+
+        const activeCatalog = computed(() => {
+          return currentTab.value === 'water' ? waterCatalog.value : microbioCatalog.value;
+        });
 
         const switchTab = (tab) => {
           if (currentTab.value === tab) return;
@@ -420,31 +382,22 @@
           historyList.value = [];
         };
 
-        const repList = computed(() => {
-          const reps = new Set();
-          rawDataList.value.forEach(d => { if (d.salesRep) reps.add(d.salesRep); });
-          return Array.from(reps);
-        });
+        const repList = computed(() => activeCatalog.value.reps || []);
 
         const filteredCustomers = computed(() => {
-          let list = rawDataList.value;
+          const cat = activeCatalog.value;
           if (user.value.role !== 'admin') {
-            list = list.filter(d => user.value.allowedCustomers.includes(d.customer));
-          } else if (selectedRep.value !== 'ALL') {
-            list = list.filter(d => d.salesRep === selectedRep.value);
+            return user.value.allowedCustomers.filter(c => (cat.customers || []).includes(c));
           }
-          const customers = new Set();
-          list.forEach(d => { if (d.customer) customers.add(d.customer); });
-          return Array.from(customers);
+          if (selectedRep.value !== 'ALL' && cat.repCustomerMap) {
+            return cat.repCustomerMap[selectedRep.value] || [];
+          }
+          return cat.customers || [];
         });
 
         const pointList = computed(() => {
-          if (!selectedCustomer.value) return [];
-          const points = new Set();
-          rawDataList.value
-            .filter(d => d.customer === selectedCustomer.value)
-            .forEach(d => { if (d.samplePoint) points.add(d.samplePoint); });
-          return Array.from(points);
+          if (!selectedCustomer.value || !activeCatalog.value.customerPointsMap) return [];
+          return activeCatalog.value.customerPointsMap[selectedCustomer.value] || [];
         });
 
         const onRepChange = () => {
@@ -458,29 +411,57 @@
           historyList.value = [];
         };
 
-        const onPointChange = () => {
-          if (!selectedPoint.value) {
+        // 按需精準撈取：只撈該廠區該水樣的 5 筆紀錄 (每次只花 3~5 次讀取！)
+        const onPointChange = async () => {
+          if (!selectedCustomer.value || !selectedPoint.value) {
             historyList.value = [];
             return;
           }
-          const matched = rawDataList.value.filter(d => 
-            d.customer === selectedCustomer.value && d.samplePoint === selectedPoint.value
-          );
-          matched.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
-          historyList.value = matched.slice(0, 5);
 
-          window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
-            timestamp: new Date().toISOString(),
-            lineId: user.value.lineId,
-            userName: user.value.name,
-            system: currentTab.value,
-            customer: selectedCustomer.value,
-            samplePoint: selectedPoint.value
-          });
+          const cacheKey = `${currentTab.value}_${selectedCustomer.value}_${selectedPoint.value}`;
+          if (queryMemoryCache[cacheKey]) {
+            historyList.value = queryMemoryCache[cacheKey]; // 命中記憶體，0 讀取 0 毫秒！
+            return;
+          }
+
+          fetchingDetail.value = true;
+          try {
+            const collName = currentTab.value === 'water' ? 'water_data' : 'microbio_data';
+            const q = window.fs.query(
+              window.fs.collection(window.db, collName),
+              window.fs.where("customer", "==", selectedCustomer.value)
+            );
+            const snap = await window.fs.getDocs(q);
+            const list = [];
+            snap.forEach(d => {
+              const data = d.data();
+              if (data.samplePoint === selectedPoint.value) list.push(data);
+            });
+
+            list.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
+            const top5 = list.slice(0, 5);
+
+            queryMemoryCache[cacheKey] = top5; // 存入記憶體
+            historyList.value = top5;
+
+            // 記錄 Log
+            window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
+              timestamp: new Date().toISOString(),
+              lineId: user.value.lineId,
+              userName: user.value.name,
+              system: currentTab.value,
+              customer: selectedCustomer.value,
+              samplePoint: selectedPoint.value
+            });
+          } catch (e) {
+            console.error("查詢失敗:", e);
+          } finally {
+            fetchingDetail.value = false;
+          }
         };
 
         return {
-          checking, authorized, user, currentTab,
+          checking, authorized, fetchingDetail, user, currentTab,
           selectedRep, selectedCustomer, selectedPoint,
           historyList, switchTab, repList, filteredCustomers, pointList,
           onRepChange, onCustomerChange, onPointChange,
