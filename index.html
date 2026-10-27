@@ -120,7 +120,6 @@
         <div class="flex justify-between items-center text-xs text-slate-500 px-1">
           <span class="font-semibold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
           
-          <!-- 電腦與手機皆通用的切換按鈕 -->
           <div class="flex items-center gap-1.5">
             <button @click="scrollPrev" title="上一期" class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold transition">‹</button>
             <span class="text-[11px] text-slate-400">左右滑動</span>
@@ -128,7 +127,7 @@
           </div>
         </div>
 
-        <!-- 橫向輪播容器 (掛載拖曳與滾輪監聽) -->
+        <!-- 橫向輪播容器 -->
         <div ref="sliderRef" 
           @mousedown="startDrag" 
           @mouseleave="stopDrag" 
@@ -139,7 +138,7 @@
           <div v-for="(item, idx) in historyList" :key="idx" 
             class="w-[88%] sm:w-[92%] flex-shrink-0 snap-center border border-slate-200 rounded-lg p-3 bg-white shadow-xs space-y-2.5 select-none">
             
-            <!-- 卡片頂部：精簡取樣日 -->
+            <!-- 卡片頂部：取樣日 -->
             <div class="flex justify-between items-center border-b border-slate-100 pb-2">
               <span class="text-xs font-semibold text-slate-700">
                 取樣日：<span class="text-slate-900 font-bold">{{ formatDate(item.sampleDate) }}</span>
@@ -150,24 +149,26 @@
               </span>
             </div>
 
-            <!-- 1. 水質數據 -->
+            <!-- 1. 水質數據 (100% 忠於 Excel 原始大小寫 + 導電度必出) -->
             <div v-if="currentTab === 'water'" class="space-y-2">
-              <div class="grid grid-cols-2 gap-2" v-if="hasKey(item, 'pH') || hasKey(item, 'Cond.')">
-                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="hasKey(item, 'pH')">
+              <!-- 重點指標 pH 與 導電度 (修復導電度遺漏問題) -->
+              <div class="grid grid-cols-2 gap-2" v-if="getCoreVal(item, 'ph') !== null || getCoreVal(item, 'cond') !== null">
+                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="getCoreVal(item, 'ph') !== null">
                   <span class="text-[11px] text-slate-500 font-medium block">pH</span>
-                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getVal(item, 'pH')) }}</span>
+                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getCoreVal(item, 'ph')) }}</span>
                 </div>
-                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="hasKey(item, 'Cond.')">
+                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="getCoreVal(item, 'cond') !== null">
                   <span class="text-[11px] text-slate-500 font-medium block">導電度 (Cond.)</span>
-                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getVal(item, 'Cond.')) }}</span>
+                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getCoreVal(item, 'cond')) }}</span>
                 </div>
               </div>
 
+              <!-- 全部檢驗項目 (還原忠於原味的標準大小寫) -->
               <div class="grid grid-cols-2 gap-1 text-xs">
-                <template v-for="(val, key) in getDisplayItems(item)" :key="key">
-                  <div v-if="!isCoreKey(key)" class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
-                    <span class="text-slate-500 pr-1 truncate" :title="key">{{ key }}</span>
-                    <span class="font-semibold text-slate-700 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
+                <template v-for="(val, rawKey) in getDisplayItems(item)" :key="rawKey">
+                  <div v-if="!isCoreField(rawKey)" class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
+                    <span class="text-slate-600 font-medium pr-1 truncate" :title="getExactLabel(rawKey)">{{ getExactLabel(rawKey) }}</span>
+                    <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
                   </div>
                 </template>
               </div>
@@ -219,7 +220,75 @@
         const historyList = ref([]);
         const sliderRef = ref(null);
 
-        // 電腦版滑鼠拖曳滾動邏輯
+        // 核心字典：強制還原 Excel 原始標準大小寫與連字號
+        const EXACT_LABEL_MAP = {
+          'th': 'T-H',
+          't-h': 'T-H',
+          'cah': 'Ca-H',
+          'ca-h': 'Ca-H',
+          'ma': 'M-A',
+          'm-a': 'M-A',
+          'pa': 'P-A',
+          'p-a': 'P-A',
+          'tfe': 'TFe',
+          'sio2': 'SiO2',
+          'so4': 'SO4',
+          'cl': 'Cl',
+          'cu': 'Cu',
+          'zn': 'Zn',
+          'al': 'Al',
+          'mn': 'Mn',
+          'tp': 'TP',
+          'tip': 'TIP',
+          'op': 'OP',
+          'turbidity': '濁度',
+          'ss': 'SS',
+          'cod': 'COD',
+          'no2': 'NO2',
+          'moo4': 'MoO4',
+          'nh3-n': 'NH3-N'
+        };
+
+        const getExactLabel = (key) => {
+          const cleanKey = String(key).trim();
+          const lower = cleanKey.toLowerCase();
+          // 若字典有標準對照則還原，否則忠於資料庫原始名稱
+          return EXACT_LABEL_MAP[lower] || cleanKey;
+        };
+
+        const isCoreField = (key) => {
+          const lower = String(key).toLowerCase().trim();
+          return lower === 'ph' || lower === 'cond' || lower === 'cond.';
+        };
+
+        // 徹底解決導電度抓取：相容 cond、cond.、Cond. 等任何格式
+        const getCoreVal = (item, type) => {
+          const items = getDisplayItems(item);
+          for (let k in items) {
+            const lower = k.toLowerCase().trim();
+            if (type === 'ph' && lower === 'ph') return items[k];
+            if (type === 'cond' && (lower === 'cond' || lower === 'cond.')) return items[k];
+          }
+          return null;
+        };
+
+        // 提取所有檢驗數值
+        const getDisplayItems = (item) => {
+          if (!item) return {};
+          if (item.items && typeof item.items === 'object' && Object.keys(item.items).length > 0) {
+            return item.items;
+          }
+          const meta = ['customer', 'salesRep', 'sampleDate', 'samplePoint', 'testDate', 'sampleTime', 'items'];
+          const res = {};
+          for (let k in item) {
+            if (!meta.includes(k) && item[k] !== null && item[k] !== undefined && item[k] !== '') {
+              res[k] = item[k];
+            }
+          }
+          return res;
+        };
+
+        // 電腦版拖曳
         let isDown = false;
         let startX = 0;
         let scrollLeftVal = 0;
@@ -240,20 +309,14 @@
           sliderRef.value.scrollLeft = scrollLeftVal - walk;
         };
 
-        // 電腦版點擊按鈕左右切換卡片
         const scrollPrev = () => {
-          if (sliderRef.value) {
-            sliderRef.value.scrollBy({ left: -sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
-          }
+          if (sliderRef.value) sliderRef.value.scrollBy({ left: -sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
         };
 
         const scrollNext = () => {
-          if (sliderRef.value) {
-            sliderRef.value.scrollBy({ left: sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
-          }
+          if (sliderRef.value) sliderRef.value.scrollBy({ left: sliderRef.value.clientWidth * 0.9, behavior: 'smooth' });
         };
 
-        // 電腦版滾輪轉換為水平滑動
         onMounted(() => {
           window.addEventListener('wheel', (e) => {
             if (sliderRef.value && sliderRef.value.contains(e.target)) {
@@ -268,37 +331,6 @@
           return currentTab.value === 'water' ? waterCache.value : microbioCache.value;
         });
 
-        const getDisplayItems = (item) => {
-          if (!item) return {};
-          if (item.items && typeof item.items === 'object' && Object.keys(item.items).length > 0) {
-            return item.items;
-          }
-          const meta = ['customer', 'salesRep', 'sampleDate', 'samplePoint', 'testDate', 'sampleTime', 'items'];
-          const res = {};
-          for (let k in item) {
-            if (!meta.includes(k) && item[k] !== null && item[k] !== undefined && item[k] !== '') {
-              res[k] = item[k];
-            }
-          }
-          return res;
-        };
-
-        const hasKey = (item, targetKey) => {
-          const items = getDisplayItems(item);
-          return Object.keys(items).some(k => k.toLowerCase() === targetKey.toLowerCase());
-        };
-
-        const getVal = (item, targetKey) => {
-          const items = getDisplayItems(item);
-          const found = Object.keys(items).find(k => k.toLowerCase() === targetKey.toLowerCase());
-          return found ? items[found] : '-';
-        };
-
-        const isCoreKey = (key) => {
-          const k = String(key).toLowerCase();
-          return k === 'ph' || k === 'cond.' || k === 'cond';
-        };
-
         const formatNumber = (val) => {
           if (val === null || val === undefined || val === '') return '-';
           const num = Number(val);
@@ -310,7 +342,7 @@
             }
             return num;
           }
-          return val;
+          return val; // 保留如 ND、一週一次等文字
         };
 
         const formatDate = (val) => {
@@ -452,7 +484,7 @@
           selectedRep, selectedCustomer, selectedPoint,
           historyList, switchTab, repList, filteredCustomers, pointList,
           onRepChange, onCustomerChange, onPointChange,
-          formatNumber, formatDate, getDisplayItems, hasKey, getVal, isCoreKey,
+          formatNumber, formatDate, getDisplayItems, getExactLabel, isCoreField, getCoreVal,
           sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag
         };
       }
