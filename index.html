@@ -11,13 +11,14 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, query, where, getDocs, doc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
+    // 您的真實 Firebase 配置
     const firebaseConfig = {
-      apiKey: "AIzaSyBamuQD53WZP-vhARqkveZkfFQWsHwe_hI",
-      authDomain: "lab-system-6bb1b.firebaseapp.com",
-      projectId: "lab-system-6bb1b",
-      storageBucket: "lab-system-6bb1b.firebasestorage.app",
-      messagingSenderId: "586379559133",
-      appId: "1:586379559133:web:e2ef942257c62701a59b34"
+      apiKey: "AIzaSyChoEkN6YGQdwZuJPMiBcCubDHBEvsSMb0",
+      authDomain: "lab-water-system.firebaseapp.com",
+      projectId: "lab-system", // 若專案ID不同請確認
+      storageBucket: "lab-water-system.firebasestorage.app",
+      messagingSenderId: "368140211763",
+      appId: "1:368140211763:web:19ae6f3c89e2cddc983546"
     };
 
     const app = initializeApp(firebaseConfig);
@@ -220,14 +221,22 @@
         const selectedCustomer = ref('');
         const selectedPoint = ref('');
 
-        // 選單目錄快取 (打開網頁只讀這兩個極輕量文件，僅佔 2 次讀取)
         const waterCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {} });
         const microbioCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {} });
         
-        // 記憶體快取：查過的水樣暫存於此，重複查看 0 毫秒且 0 讀取
         const queryMemoryCache = {};
         const historyList = ref([]);
         const sliderRef = ref(null);
+
+        // 防呆工具：確保任何格式都轉為乾淨的陣列清單
+        const ensureArray = (val) => {
+          if (!val) return [];
+          if (Array.isArray(val)) return val;
+          if (typeof val === 'string') {
+            return val.split(',').map(s => s.trim()).filter(Boolean);
+          }
+          return [];
+        };
 
         const EXACT_LABEL_MAP = {
           'th': 'T-H', 't-h': 'T-H', 'cah': 'Ca-H', 'ca-h': 'Ca-H',
@@ -323,7 +332,6 @@
           return String(val).replace(/T.*$/, '').trim();
         };
 
-        // 系統啟動：僅讀取白名單與選單目錄 (共 3 次讀取，0.05 秒秒開！)
         const initSystem = async () => {
           try {
             await liff.init({ liffId: "2012237984-DUU144BJ" });
@@ -334,7 +342,6 @@
             const profile = await liff.getProfile();
             user.value.lineId = profile.userId;
 
-            // 1. 讀取白名單 (1 筆)
             const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
             if (userSnap.exists()) {
               authorized.value = true;
@@ -342,7 +349,6 @@
               if (user.value.role !== 'admin') {
                 selectedRep.value = user.value.name;
               }
-              // 2. 讀取輕量目錄 (2 筆)
               await loadCatalogs();
             } else {
               authorized.value = false;
@@ -382,22 +388,25 @@
           historyList.value = [];
         };
 
-        const repList = computed(() => activeCatalog.value.reps || []);
+        const repList = computed(() => ensureArray(activeCatalog.value.reps));
 
+        // 核心修復：強制轉成陣列，杜絕單一字母問題
         const filteredCustomers = computed(() => {
           const cat = activeCatalog.value;
           if (user.value.role !== 'admin') {
-            return user.value.allowedCustomers.filter(c => (cat.customers || []).includes(c));
+            const allowed = ensureArray(user.value.allowedCustomers);
+            const allCust = ensureArray(cat.customers);
+            return allowed.filter(c => allCust.includes(c));
           }
           if (selectedRep.value !== 'ALL' && cat.repCustomerMap) {
-            return cat.repCustomerMap[selectedRep.value] || [];
+            return ensureArray(cat.repCustomerMap[selectedRep.value]);
           }
-          return cat.customers || [];
+          return ensureArray(cat.customers);
         });
 
         const pointList = computed(() => {
           if (!selectedCustomer.value || !activeCatalog.value.customerPointsMap) return [];
-          return activeCatalog.value.customerPointsMap[selectedCustomer.value] || [];
+          return ensureArray(activeCatalog.value.customerPointsMap[selectedCustomer.value]);
         });
 
         const onRepChange = () => {
@@ -411,7 +420,6 @@
           historyList.value = [];
         };
 
-        // 按需精準撈取：只撈該廠區該水樣的 5 筆紀錄 (每次只花 3~5 次讀取！)
         const onPointChange = async () => {
           if (!selectedCustomer.value || !selectedPoint.value) {
             historyList.value = [];
@@ -420,7 +428,7 @@
 
           const cacheKey = `${currentTab.value}_${selectedCustomer.value}_${selectedPoint.value}`;
           if (queryMemoryCache[cacheKey]) {
-            historyList.value = queryMemoryCache[cacheKey]; // 命中記憶體，0 讀取 0 毫秒！
+            historyList.value = queryMemoryCache[cacheKey];
             return;
           }
 
@@ -441,10 +449,9 @@
             list.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
             const top5 = list.slice(0, 5);
 
-            queryMemoryCache[cacheKey] = top5; // 存入記憶體
+            queryMemoryCache[cacheKey] = top5;
             historyList.value = top5;
 
-            // 記錄 Log
             window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
               timestamp: new Date().toISOString(),
               lineId: user.value.lineId,
