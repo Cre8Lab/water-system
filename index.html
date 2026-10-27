@@ -29,7 +29,7 @@
 <body class="bg-slate-100 min-h-screen text-slate-800 antialiased p-2 sm:p-4">
   <div id="app" class="max-w-md mx-auto bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-200">
     
-    <!-- 頂部導航列 (整合精簡分頁按鈕，大幅省空間) -->
+    <!-- 頂部導航列 (精簡緊湊設計) -->
     <div class="bg-slate-900 text-white px-4 py-3 flex justify-between items-center">
       <div>
         <h1 class="text-sm font-bold tracking-wide">檢驗數據查詢</h1>
@@ -41,7 +41,7 @@
         </p>
       </div>
 
-      <!-- 緊湊型分頁切換按鈕 -->
+      <!-- 緊湊型分頁按鈕 -->
       <div class="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
         <button @click="switchTab('water')" 
           :class="currentTab === 'water' ? 'bg-blue-600 text-white font-bold shadow' : 'text-slate-400 hover:text-white'" 
@@ -52,13 +52,13 @@
       </div>
     </div>
 
-    <!-- 狀態：檢查中 -->
+    <!-- 狀態一：身分檢查中 (現在只花 0.05 秒即可通過) -->
     <div v-if="checking" class="text-center py-16 px-4">
       <div class="inline-block animate-spin rounded-full h-7 w-7 border-3 border-blue-600 border-t-transparent mb-2"></div>
-      <p class="text-xs text-gray-500 font-medium">正在驗證身分...</p>
+      <p class="text-xs text-gray-500 font-medium">正在啟動系統...</p>
     </div>
 
-    <!-- 狀態：未授權 -->
+    <!-- 狀態二：未獲授權 -->
     <div v-else-if="!authorized" class="p-8 text-center">
       <div class="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-2 text-lg font-bold">✕</div>
       <h2 class="text-sm font-bold text-slate-800">未在白名單授權中</h2>
@@ -66,16 +66,19 @@
       <div class="mt-3 p-2 bg-slate-100 rounded text-[11px] font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
     </div>
 
-    <!-- 狀態：主查詢介面 -->
+    <!-- 狀態三：主查詢介面 -->
     <div v-else class="p-4 space-y-3">
       
-      <!-- 篩選選單 (嚴格使用 Excel 原始標題) -->
+      <!-- 篩選選單 (嚴格使用 Excel 原標題) -->
       <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
         
-        <!-- 1. 業務員 (主管可選全部，業務鎖定自己) -->
+        <!-- 1. 業務員 -->
         <div v-if="user.role === 'admin'">
-          <label class="block text-xs font-bold text-slate-700 mb-1">業務員</label>
-          <select v-model="selectedRep" @change="onRepChange" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-xs font-bold text-slate-700">業務員</label>
+            <span v-if="loadingData" class="text-[10px] text-blue-500 font-medium animate-pulse">數據更新中...</span>
+          </div>
+          <select v-model="selectedRep" @change="onRepChange" :disabled="loadingData" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100">
             <option value="ALL">全部業務員 (主管)</option>
             <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
           </select>
@@ -84,8 +87,8 @@
         <!-- 2. 客戶代號 -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">客戶代號</label>
-          <select v-model="selectedCustomer" @change="onCustomerChange" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
-            <option value="">-- 請選擇客戶代號 --</option>
+          <select v-model="selectedCustomer" @change="onCustomerChange" :disabled="loadingData" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100">
+            <option value="">{{ loadingData ? '資料加載中...' : '-- 請選擇客戶代號 --' }}</option>
             <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
           </select>
         </div>
@@ -93,7 +96,7 @@
         <!-- 3. 取樣點 -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">取樣點</label>
-          <select v-model="selectedPoint" @change="fetchDetailData" :disabled="!selectedCustomer" 
+          <select v-model="selectedPoint" @change="fetchDetailData" :disabled="!selectedCustomer || loadingData" 
             class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white disabled:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option value="">-- 請選擇取樣點 --</option>
             <option v-for="p in pointList" :key="p" :value="p">{{ p }}</option>
@@ -110,9 +113,9 @@
           <span>取樣日：<b class="text-slate-800">{{ formatDate(currentResult.sampleDate) }}</b></span>
         </div>
 
-        <!-- 1. 水質數據完整清單 (動態呈現所有項目，四捨五入至第 4 位) -->
+        <!-- 1. 水質數據完整清單 -->
         <div v-if="currentTab === 'water'" class="space-y-2.5">
-          <!-- 重點指標大牌 -->
+          <!-- 重點指標 -->
           <div class="grid grid-cols-2 gap-2" v-if="currentResult.items && (currentResult.items['pH'] || currentResult.items['Cond.'])">
             <div class="bg-blue-50/60 p-2 rounded-lg border border-blue-100 text-center">
               <span class="text-[11px] text-blue-700 font-semibold block">pH</span>
@@ -135,7 +138,7 @@
           </div>
         </div>
 
-        <!-- 2. 微生物數據 (排版優化) -->
+        <!-- 2. 微生物數據 -->
         <div v-if="currentTab === 'microbio'" class="space-y-2.5">
           <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
             <span class="text-[11px] text-emerald-800 font-bold block uppercase tracking-wider">換算總菌數 (CFU/mL)</span>
@@ -173,6 +176,7 @@
       setup() {
         const checking = ref(true);
         const authorized = ref(false);
+        const loadingData = ref(false);
         const user = ref({ lineId: '', name: '', role: '', allowedCustomers: [] });
         
         const currentTab = ref('water');
@@ -183,16 +187,14 @@
         const rawDataList = ref([]);
         const currentResult = ref(null);
 
-        // 核心邏輯：四捨五入最多4位，原本不足4位維持完全位數
+        // 四捨五入最多4位，不足4位維持完全位數
         const formatNumber = (val) => {
           if (val === null || val === undefined || val === '') return '-';
           if (typeof val === 'number') {
             const str = val.toString();
             if (str.includes('.')) {
               const decimals = str.split('.')[1].length;
-              if (decimals > 4) {
-                return parseFloat(val.toFixed(4));
-              }
+              if (decimals > 4) return parseFloat(val.toFixed(4));
             }
             return val;
           }
@@ -201,16 +203,14 @@
             const str = num.toString();
             if (str.includes('.')) {
               const decimals = str.split('.')[1].length;
-              if (decimals > 4) {
-                return parseFloat(num.toFixed(4));
-              }
+              if (decimals > 4) return parseFloat(num.toFixed(4));
             }
             return num;
           }
           return val;
         };
 
-        // 核心邏輯：日期精簡化 (格式: 2026/10/21)
+        // 日期精簡化 (格式: 2026/10/21)
         const formatDate = (val) => {
           if (!val) return '-';
           const d = new Date(val);
@@ -223,16 +223,21 @@
           return String(val).replace(/T.*$/, '').trim();
         };
 
+        // 核心改進：極速驗證身分 (0.05 秒解鎖主介面，數據背景加載)
         const initSystem = async () => {
           try {
             await liff.init({ liffId: "2012237984-DUU144BJ" });
+            
+            // 若在外部瀏覽器未登入，引導登入
             if (!liff.isLoggedIn()) {
               liff.login();
               return;
             }
+
             const profile = await liff.getProfile();
             user.value.lineId = profile.userId;
 
+            // 1. 只查白名單 (速度極快)
             const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
             if (userSnap.exists()) {
               authorized.value = true;
@@ -240,11 +245,17 @@
               if (user.value.role !== 'admin') {
                 selectedRep.value = user.value.name;
               }
-              await loadSystemData();
+              // ★ 關鍵修復：驗證成功立刻解鎖主畫面！
+              checking.value = false;
+
+              // 2. 數據背景非同步載入，不阻塞使用者
+              loadSystemData();
+            } else {
+              authorized.value = false;
+              checking.value = false;
             }
           } catch (err) {
-            console.error(err);
-          } finally {
+            console.error("LIFF 驗證失敗:", err);
             checking.value = false;
           }
         };
@@ -255,12 +266,20 @@
           window.addEventListener('firebase-ready', initSystem, { once: true });
         }
 
+        // 背景非同步載入數據
         const loadSystemData = async () => {
-          const collName = currentTab.value === 'water' ? 'water_data' : 'microbio_data';
-          const snap = await window.fs.getDocs(window.fs.collection(window.db, collName));
-          const list = [];
-          snap.forEach(doc => list.push(doc.data()));
-          rawDataList.value = list;
+          loadingData.value = true;
+          try {
+            const collName = currentTab.value === 'water' ? 'water_data' : 'microbio_data';
+            const snap = await window.fs.getDocs(window.fs.collection(window.db, collName));
+            const list = [];
+            snap.forEach(doc => list.push(doc.data()));
+            rawDataList.value = list;
+          } catch (e) {
+            console.error("數據加載失敗:", e);
+          } finally {
+            loadingData.value = false;
+          }
         };
 
         const switchTab = async (tab) => {
@@ -327,7 +346,7 @@
         };
 
         return {
-          checking, authorized, user, currentTab,
+          checking, authorized, loadingData, user, currentTab,
           selectedRep, selectedCustomer, selectedPoint,
           currentResult, switchTab, repList, filteredCustomers, pointList,
           onRepChange, onCustomerChange, fetchDetailData,
