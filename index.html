@@ -25,40 +25,45 @@
     window.fs = { collection, getDocs, doc, getDoc, addDoc };
     window.dispatchEvent(new Event('firebase-ready'));
   </script>
+  <style>
+    /* 隱藏滾動條但保持滑動功能 */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800 antialiased p-2 sm:p-4">
-  <div id="app" class="max-w-md mx-auto bg-white rounded-2xl shadow-lg overflow-hidden border border-slate-200">
+  <div id="app" class="max-w-md mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-200">
     
-    <!-- 頂部導航列 (精簡緊湊設計) -->
-    <div class="bg-slate-900 text-white px-4 py-3 flex justify-between items-center">
+    <!-- 頂部清爽現代藍漸層導航列 (方案 A) -->
+    <div class="bg-gradient-to-r from-sky-500 via-blue-600 to-indigo-600 text-white px-4 py-3 flex justify-between items-center shadow-sm">
       <div>
-        <h1 class="text-sm font-bold tracking-wide">檢驗數據查詢</h1>
-        <p class="text-[11px] text-slate-400" v-if="user.name">
+        <h1 class="text-sm font-bold tracking-wide">檢驗數據查詢系統</h1>
+        <p class="text-[11px] text-blue-100 mt-0.5" v-if="user.name">
           {{ user.name }} · 
-          <span :class="user.role === 'admin' ? 'text-amber-400 font-semibold' : 'text-blue-400 font-semibold'">
+          <span class="font-semibold text-white bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
             {{ user.role === 'admin' ? '主管權限' : '業務權限' }}
           </span>
         </p>
       </div>
 
-      <!-- 緊湊型分頁按鈕 -->
-      <div class="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+      <!-- 緊湊型分頁按鈕 (膠囊切換) -->
+      <div class="flex bg-black/20 p-0.5 rounded-lg border border-white/20">
         <button @click="switchTab('water')" 
-          :class="currentTab === 'water' ? 'bg-blue-600 text-white font-bold shadow' : 'text-slate-400 hover:text-white'" 
+          :class="currentTab === 'water' ? 'bg-white text-blue-600 font-bold shadow' : 'text-blue-100 hover:text-white'" 
           class="px-2.5 py-1 text-xs rounded-md transition-all">💧 水質</button>
         <button @click="switchTab('microbio')" 
-          :class="currentTab === 'microbio' ? 'bg-emerald-600 text-white font-bold shadow' : 'text-slate-400 hover:text-white'" 
+          :class="currentTab === 'microbio' ? 'bg-white text-emerald-600 font-bold shadow' : 'text-blue-100 hover:text-white'" 
           class="px-2.5 py-1 text-xs rounded-md transition-all">🦠 微生物</button>
       </div>
     </div>
 
-    <!-- 狀態一：身分檢查中 (現在只花 0.05 秒即可通過) -->
+    <!-- 狀態：檢查中 (極速啟動) -->
     <div v-if="checking" class="text-center py-16 px-4">
       <div class="inline-block animate-spin rounded-full h-7 w-7 border-3 border-blue-600 border-t-transparent mb-2"></div>
       <p class="text-xs text-gray-500 font-medium">正在啟動系統...</p>
     </div>
 
-    <!-- 狀態二：未獲授權 -->
+    <!-- 狀態：未授權 -->
     <div v-else-if="!authorized" class="p-8 text-center">
       <div class="w-10 h-10 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-2 text-lg font-bold">✕</div>
       <h2 class="text-sm font-bold text-slate-800">未在白名單授權中</h2>
@@ -66,37 +71,42 @@
       <div class="mt-3 p-2 bg-slate-100 rounded text-[11px] font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
     </div>
 
-    <!-- 狀態三：主查詢介面 -->
+    <!-- 狀態：主查詢介面 -->
     <div v-else class="p-4 space-y-3">
       
-      <!-- 篩選選單 (嚴格使用 Excel 原標題) -->
+      <!-- 篩選選單 (嚴格使用 Excel 原標題，一行兩個選項) -->
       <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
         
-        <!-- 1. 業務員 -->
-        <div v-if="user.role === 'admin'">
-          <div class="flex justify-between items-center mb-1">
-            <label class="text-xs font-bold text-slate-700">業務員</label>
-            <span v-if="loadingData" class="text-[10px] text-blue-500 font-medium animate-pulse">數據更新中...</span>
+        <!-- 第一行：業務員 ｜ 客戶代號 (一行兩列) -->
+        <div class="grid grid-cols-2 gap-2">
+          <!-- 1. 業務員 -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">業務員</label>
+            <select v-if="user.role === 'admin'" v-model="selectedRep" @change="onRepChange" 
+              class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="ALL">全部業務員</option>
+              <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
+            </select>
+            <div v-else class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-slate-100 text-slate-600 font-bold">
+              {{ user.name }}
+            </div>
           </div>
-          <select v-model="selectedRep" @change="onRepChange" :disabled="loadingData" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100">
-            <option value="ALL">全部業務員 (主管)</option>
-            <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
-          </select>
+
+          <!-- 2. 客戶代號 -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">客戶代號</label>
+            <select v-model="selectedCustomer" @change="onCustomerChange" 
+              class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <option value="">-- 請選擇 --</option>
+              <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </div>
         </div>
 
-        <!-- 2. 客戶代號 -->
-        <div>
-          <label class="block text-xs font-bold text-slate-700 mb-1">客戶代號</label>
-          <select v-model="selectedCustomer" @change="onCustomerChange" :disabled="loadingData" class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-100">
-            <option value="">{{ loadingData ? '資料加載中...' : '-- 請選擇客戶代號 --' }}</option>
-            <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
-          </select>
-        </div>
-
-        <!-- 3. 取樣點 -->
+        <!-- 第二行：取樣點 (整行寬度) -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">取樣點</label>
-          <select v-model="selectedPoint" @change="fetchDetailData" :disabled="!selectedCustomer || loadingData" 
+          <select v-model="selectedPoint" @change="onPointChange" :disabled="!selectedCustomer" 
             class="w-full border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs bg-white disabled:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500">
             <option value="">-- 請選擇取樣點 --</option>
             <option v-for="p in pointList" :key="p" :value="p">{{ p }}</option>
@@ -104,67 +114,90 @@
         </div>
       </div>
 
-      <!-- 查詢結果區域 (重新排版) -->
-      <div v-if="currentResult" class="border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm space-y-3">
-        
-        <!-- 精簡日期欄位 (格式: 2026/10/21) -->
-        <div class="flex justify-between items-center text-xs text-slate-600 border-b border-slate-100 pb-2">
-          <span>分析日：<b class="text-slate-800">{{ formatDate(currentResult.testDate) }}</b></span>
-          <span>取樣日：<b class="text-slate-800">{{ formatDate(currentResult.sampleDate) }}</b></span>
+      <!-- 查詢結果：左右滑動橫向輪播卡片 (最新 5 期歷史數據比對) -->
+      <div v-if="historyList.length > 0" class="space-y-2">
+        <div class="flex justify-between items-center text-xs text-slate-500 px-1">
+          <span class="font-bold text-slate-700">歷史檢驗紀錄 (共 {{ historyList.length }} 期)</span>
+          <span class="text-[11px] text-blue-600 flex items-center gap-1">
+            <span>👈 左右滑動比對</span>
+          </span>
         </div>
 
-        <!-- 1. 水質數據完整清單 -->
-        <div v-if="currentTab === 'water'" class="space-y-2.5">
-          <!-- 重點指標 -->
-          <div class="grid grid-cols-2 gap-2" v-if="currentResult.items && (currentResult.items['pH'] || currentResult.items['Cond.'])">
-            <div class="bg-blue-50/60 p-2 rounded-lg border border-blue-100 text-center">
-              <span class="text-[11px] text-blue-700 font-semibold block">pH</span>
-              <span class="text-lg font-black text-blue-600">{{ formatNumber(currentResult.items['pH']) }}</span>
+        <!-- 水平滾動輪播容器 (Snap 滑動效果) -->
+        <div class="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-2 pt-1 no-scrollbar -mx-1 px-1">
+          <div v-for="(item, idx) in historyList" :key="idx" 
+            class="w-[88%] sm:w-[92%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-md space-y-3">
+            
+            <!-- 卡片頂部：精簡取樣日標籤 -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+              <span class="text-xs font-bold text-slate-800">
+                取樣日：<span class="text-blue-600 text-sm">{{ formatDate(item.sampleDate) }}</span>
+              </span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold" 
+                :class="idx === 0 ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'">
+                {{ idx === 0 ? '最新一期' : '前期紀錄 ' + idx }}
+              </span>
             </div>
-            <div class="bg-blue-50/60 p-2 rounded-lg border border-blue-100 text-center">
-              <span class="text-[11px] text-blue-700 font-semibold block">導電度 (Cond.)</span>
-              <span class="text-lg font-black text-blue-600">{{ formatNumber(currentResult.items['Cond.']) }}</span>
-            </div>
-          </div>
 
-          <!-- 全部檢驗指標清單 (清晰兩欄排列，杜絕擠壓) -->
-          <div class="grid grid-cols-2 gap-1.5 text-xs">
-            <template v-for="(val, key) in currentResult.items" :key="key">
-              <div v-if="key !== 'pH' && key !== 'Cond.'" class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-                <span class="text-slate-500 font-medium pr-1 truncate" :title="key">{{ key }}</span>
-                <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
+            <!-- 1. 水質卡片數據 (完整動態指標，4 位四捨五入) -->
+            <div v-if="currentTab === 'water'" class="space-y-2.5">
+              <!-- 重點指標 pH 與 導電度 -->
+              <div class="grid grid-cols-2 gap-2" v-if="item.items && (item.items['pH'] || item.items['Cond.'])">
+                <div class="bg-blue-50/70 p-2 rounded-lg border border-blue-100 text-center">
+                  <span class="text-[11px] text-blue-700 font-semibold block">pH</span>
+                  <span class="text-lg font-black text-blue-600">{{ formatNumber(item.items['pH']) }}</span>
+                </div>
+                <div class="bg-blue-50/70 p-2 rounded-lg border border-blue-100 text-center">
+                  <span class="text-[11px] text-blue-700 font-semibold block">導電度 (Cond.)</span>
+                  <span class="text-lg font-black text-blue-600">{{ formatNumber(item.items['Cond.']) }}</span>
+                </div>
               </div>
-            </template>
+
+              <!-- 全部檢驗項目兩欄網格 (杜絕字體擠壓重疊) -->
+              <div class="grid grid-cols-2 gap-1.5 text-xs">
+                <template v-for="(val, key) in item.items" :key="key">
+                  <div v-if="key !== 'pH' && key !== 'Cond.'" class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                    <span class="text-slate-500 font-medium pr-1 truncate" :title="key">{{ key }}</span>
+                    <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- 2. 微生物卡片數據 (科學上標規範與 ppm 標籤) -->
+            <div v-if="currentTab === 'microbio'" class="space-y-2.5">
+              <!-- 總菌數大字牌 (培養皿讀數與次方合成帶有上標的標準格式) -->
+              <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
+                <span class="text-[11px] text-emerald-800 font-bold block uppercase tracking-wider">總菌數 (CFU/mL)</span>
+                <span class="text-2xl font-black text-emerald-600 mt-1 block">
+                  {{ item.colonyCount }} × 10<sup class="text-base font-bold">{{ item.dilutionExp !== null && item.dilutionExp !== undefined ? item.dilutionExp : '0' }}</sup>
+                </span>
+                <span class="text-[10px] text-emerald-600/80 mt-0.5 block font-mono">換算值：{{ item.cfu || '0' }}</span>
+              </div>
+
+              <!-- 微生物各項數據 -->
+              <div class="grid grid-cols-2 gap-1.5 text-xs">
+                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                  <span class="text-slate-500">培養皿讀數</span>
+                  <span class="font-bold text-slate-800">{{ formatNumber(item.colonyCount) }}</span>
+                </div>
+                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                  <span class="text-slate-500">稀釋次方</span>
+                  <span class="font-bold text-slate-800">×10<sup>{{ item.dilutionExp }}</sup></span>
+                </div>
+                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                  <span class="text-slate-500">餘氯 (ppm)</span>
+                  <span class="font-bold text-slate-800">{{ formatNumber(item.freeCl) }}</span>
+                </div>
+                <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
+                  <span class="text-slate-500">總氯 (ppm)</span>
+                  <span class="font-bold text-slate-800">{{ formatNumber(item.totalCl) }}</span>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
-
-        <!-- 2. 微生物數據 -->
-        <div v-if="currentTab === 'microbio'" class="space-y-2.5">
-          <div class="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
-            <span class="text-[11px] text-emerald-800 font-bold block uppercase tracking-wider">換算總菌數 (CFU/mL)</span>
-            <span class="text-2xl font-black text-emerald-600 mt-0.5 block">{{ currentResult.cfu || '0' }}</span>
-          </div>
-
-          <div class="grid grid-cols-2 gap-1.5 text-xs">
-            <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-              <span class="text-slate-500">培養皿讀數</span>
-              <span class="font-bold text-slate-800">{{ formatNumber(currentResult.colonyCount) }}</span>
-            </div>
-            <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-              <span class="text-slate-500">稀釋次方</span>
-              <span class="font-bold text-slate-800">×10<sup>{{ currentResult.dilutionExp }}</sup></span>
-            </div>
-            <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-              <span class="text-slate-500">餘氯</span>
-              <span class="font-bold text-slate-800">{{ formatNumber(currentResult.freeCl) }}</span>
-            </div>
-            <div class="flex justify-between items-center p-2 bg-slate-50 rounded border border-slate-100">
-              <span class="text-slate-500">總氯</span>
-              <span class="font-bold text-slate-800">{{ formatNumber(currentResult.totalCl) }}</span>
-            </div>
-          </div>
-        </div>
-
       </div>
     </div>
   </div>
@@ -176,7 +209,6 @@
       setup() {
         const checking = ref(true);
         const authorized = ref(false);
-        const loadingData = ref(false);
         const user = ref({ lineId: '', name: '', role: '', allowedCustomers: [] });
         
         const currentTab = ref('water');
@@ -184,8 +216,15 @@
         const selectedCustomer = ref('');
         const selectedPoint = ref('');
 
-        const rawDataList = ref([]);
-        const currentResult = ref(null);
+        // 核心改進：雙向資料記憶體快取 (解決切換延遲)
+        const waterCache = ref([]);
+        const microbioCache = ref([]);
+        const historyList = ref([]);
+
+        // 當前系統使用對應快取
+        const rawDataList = computed(() => {
+          return currentTab.value === 'water' ? waterCache.value : microbioCache.value;
+        });
 
         // 四捨五入最多4位，不足4位維持完全位數
         const formatNumber = (val) => {
@@ -223,21 +262,19 @@
           return String(val).replace(/T.*$/, '').trim();
         };
 
-        // 核心改進：極速驗證身分 (0.05 秒解鎖主介面，數據背景加載)
+        // 系統啟動：白名單驗證後，雙向並行預載入兩套數據，後續 0 毫秒秒切
         const initSystem = async () => {
           try {
             await liff.init({ liffId: "2012237984-DUU144BJ" });
-            
-            // 若在外部瀏覽器未登入，引導登入
             if (!liff.isLoggedIn()) {
-              liff.login();
+              liff.login({ redirectUri: window.location.href });
               return;
             }
 
             const profile = await liff.getProfile();
             user.value.lineId = profile.userId;
 
-            // 1. 只查白名單 (速度極快)
+            // 1. 白名單檢查
             const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
             if (userSnap.exists()) {
               authorized.value = true;
@@ -245,11 +282,11 @@
               if (user.value.role !== 'admin') {
                 selectedRep.value = user.value.name;
               }
-              // ★ 關鍵修復：驗證成功立刻解鎖主畫面！
+              // 立即關閉驗證畫面
               checking.value = false;
 
-              // 2. 數據背景非同步載入，不阻塞使用者
-              loadSystemData();
+              // 2. 雙向並行預載入，存入本地記憶體快取
+              preloadAllData();
             } else {
               authorized.value = false;
               checking.value = false;
@@ -266,36 +303,43 @@
           window.addEventListener('firebase-ready', initSystem, { once: true });
         }
 
-        // 背景非同步載入數據
-        const loadSystemData = async () => {
-          loadingData.value = true;
+        // 雙向並行預載入 (Promise.all 毫秒級完成)
+        const preloadAllData = async () => {
           try {
-            const collName = currentTab.value === 'water' ? 'water_data' : 'microbio_data';
-            const snap = await window.fs.getDocs(window.fs.collection(window.db, collName));
-            const list = [];
-            snap.forEach(doc => list.push(doc.data()));
-            rawDataList.value = list;
+            const [waterSnap, mbSnap] = await Promise.all([
+              window.fs.getDocs(window.fs.collection(window.db, "water_data")),
+              window.fs.getDocs(window.fs.collection(window.db, "microbio_data"))
+            ]);
+            
+            const wList = [];
+            waterSnap.forEach(doc => wList.push(doc.data()));
+            waterCache.value = wList;
+
+            const mList = [];
+            mbSnap.forEach(doc => mList.push(doc.data()));
+            microbioCache.value = mList;
           } catch (e) {
-            console.error("數據加載失敗:", e);
-          } finally {
-            loadingData.value = false;
+            console.error("載入失敗:", e);
           }
         };
 
-        const switchTab = async (tab) => {
+        // 系統切換：0 毫秒秒切，保留業務員，重置客戶代號與取樣點
+        const switchTab = (tab) => {
           if (currentTab.value === tab) return;
           currentTab.value = tab;
+          selectedCustomer.value = ''; // 回到 -- 請選擇 --
           selectedPoint.value = '';
-          currentResult.value = null;
-          await loadSystemData();
+          historyList.value = [];
         };
 
+        // 業務員清單
         const repList = computed(() => {
           const reps = new Set();
           rawDataList.value.forEach(d => { if (d.salesRep) reps.add(d.salesRep); });
           return Array.from(reps);
         });
 
+        // 客戶代號清單 (依當前系統有採樣的客戶過濾)
         const filteredCustomers = computed(() => {
           let list = rawDataList.value;
           if (user.value.role !== 'admin') {
@@ -308,6 +352,7 @@
           return Array.from(customers);
         });
 
+        // 取樣點清單
         const pointList = computed(() => {
           if (!selectedCustomer.value) return [];
           const points = new Set();
@@ -320,21 +365,33 @@
         const onRepChange = () => {
           selectedCustomer.value = '';
           selectedPoint.value = '';
-          currentResult.value = null;
+          historyList.value = [];
         };
 
         const onCustomerChange = () => {
           selectedPoint.value = '';
-          currentResult.value = null;
+          historyList.value = [];
         };
 
-        const fetchDetailData = () => {
-          if (!selectedPoint.value) return;
-          const found = rawDataList.value.find(d => 
+        // 選定取樣點：自動篩選出「最新 5 期歷史數據」並按日期降冪排序
+        const onPointChange = () => {
+          if (!selectedPoint.value) {
+            historyList.value = [];
+            return;
+          }
+          
+          // 找出同廠區、同取樣點的所有歷史紀錄
+          const matched = rawDataList.value.filter(d => 
             d.customer === selectedCustomer.value && d.samplePoint === selectedPoint.value
           );
-          currentResult.value = found;
 
+          // 依取樣日降冪排序 (最新的在最前面)
+          matched.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
+
+          // 取最新 5 期
+          historyList.value = matched.slice(0, 5);
+
+          // 寫入查詢日誌
           window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
             timestamp: new Date().toISOString(),
             lineId: user.value.lineId,
@@ -346,10 +403,10 @@
         };
 
         return {
-          checking, authorized, loadingData, user, currentTab,
+          checking, authorized, user, currentTab,
           selectedRep, selectedCustomer, selectedPoint,
-          currentResult, switchTab, repList, filteredCustomers, pointList,
-          onRepChange, onCustomerChange, fetchDetailData,
+          historyList, switchTab, repList, filteredCustomers, pointList,
+          onRepChange, onCustomerChange, onPointChange,
           formatNumber, formatDate
         };
       }
