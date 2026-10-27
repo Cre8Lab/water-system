@@ -11,7 +11,6 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
     import { getFirestore, collection, query, where, getDocs, doc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-    // 您的真實 Firebase 配置
     const firebaseConfig = {
       apiKey: "AIzaSyBamuQD53WZP-vhARqkveZkfFQWsHwe_hI",
       authDomain: "lab-system-6bb1b.firebaseapp.com",
@@ -156,8 +155,9 @@
               </span>
             </div>
 
-            <!-- 1. 水質數據 -->
+            <!-- 1. 水質數據 (嚴格按照 Excel 原始順序固定排序) -->
             <div v-if="currentTab === 'water'" class="space-y-2">
+              <!-- 重點指標 pH 與 導電度 -->
               <div class="grid grid-cols-2 gap-2" v-if="getCoreVal(item, 'ph') !== null || getCoreVal(item, 'cond') !== null">
                 <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="getCoreVal(item, 'ph') !== null">
                   <span class="text-[11px] text-slate-500 font-medium block">pH</span>
@@ -169,13 +169,13 @@
                 </div>
               </div>
 
+              <!-- 全部檢驗項目 (根據 Excel 水質單欄位順序固定排列) -->
               <div class="grid grid-cols-2 gap-1 text-xs">
-                <template v-for="(val, rawKey) in getDisplayItems(item)" :key="rawKey">
-                  <div v-if="!isCoreField(rawKey)" class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
-                    <span class="text-slate-600 font-medium pr-1 truncate" :title="getExactLabel(rawKey)">{{ getExactLabel(rawKey) }}</span>
-                    <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(val) }}</span>
-                  </div>
-                </template>
+                <div v-for="entry in getSortedWaterItems(item)" :key="entry.label" 
+                  class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
+                  <span class="text-slate-600 font-medium pr-1 truncate" :title="entry.label">{{ entry.label }}</span>
+                  <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
+                </div>
               </div>
             </div>
 
@@ -228,13 +228,25 @@
         const historyList = ref([]);
         const sliderRef = ref(null);
 
-        // 防呆工具：確保任何格式都轉為乾淨的陣列清單
+        // ★ Excel 水質單標準項目絕對排序表 (嚴格按照 Excel 第 7~87 欄順序)
+        const WATER_FIELD_ORDER = [
+          'pH', 'Cond.', 'P-A', 'M-A', 'T-H', 'T-H(濾後)', 'Ca-H', 'Ca-H(濾後)',
+          'Cl', 'SO4', 'SiO2', 'SiO2(濾後)', 'TFe', 'Fe(濾後)',
+          'Zn', 'Zn(濾後)', 'Cu', 'Cu(濾後)', 'TP', 'TP(濾後)',
+          'TIP', 'TIP(濾後)', 'OP', 'OP(濾後)', '油份', 'SO3', 'SS', '濁度',
+          'EDTA', '比重', 'NO2', 'MoO4', 'MoO4(濾後)', 'NH3-N', 'F',
+          'MLSS', 'VSS', 'COD', 'DEHA', '含水率', '酸度', 'NaOH %',
+          'Fe 2+', 'TTA', '有效氯%', '灰份%', 'TDS', 'TSS',
+          'Al', 'Al(過濾)', 'Mn', 'Mn(過濾)', 'Na', 'Na(過濾)', 'K', 'K(過濾)',
+          'N2H4', 'Sr', 'Ba', 'Cd', 'Cr', 'Co', 'Ni', 'B', 'B(濾後)',
+          'V', 'Se', 'As', 'H2S', 'PVA', 'PMA', 'Ag', 'Hg', 'Kathon',
+          'Pb', 'Bi', 'Ga', 'In', 'Li', 'Ti', 'Carbohydrazide'
+        ];
+
         const ensureArray = (val) => {
           if (!val) return [];
           if (Array.isArray(val)) return val;
-          if (typeof val === 'string') {
-            return val.split(',').map(s => s.trim()).filter(Boolean);
-          }
+          if (typeof val === 'string') return val.split(',').map(s => s.trim()).filter(Boolean);
           return [];
         };
 
@@ -280,6 +292,32 @@
             }
           }
           return res;
+        };
+
+        // ★ 核心函式：將水樣檢驗項目依照 Excel 原始標題順序嚴格排序輸出
+        const getSortedWaterItems = (item) => {
+          const items = getDisplayItems(item);
+          const entries = [];
+
+          for (let rawKey in items) {
+            const label = getExactLabel(rawKey);
+            if (isCoreField(label)) continue; // pH 與 導電度 已呈現在頂部
+            const val = items[rawKey];
+            if (val === null || val === undefined || val === '') continue;
+            entries.push({ label, val });
+          }
+
+          // 嚴格依據 WATER_FIELD_ORDER 的順序排序
+          entries.sort((a, b) => {
+            const idxA = WATER_FIELD_ORDER.indexOf(a.label);
+            const idxB = WATER_FIELD_ORDER.indexOf(b.label);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.label.localeCompare(b.label);
+          });
+
+          return entries;
         };
 
         let isDown = false, startX = 0, scrollLeftVal = 0;
@@ -390,7 +428,6 @@
 
         const repList = computed(() => ensureArray(activeCatalog.value.reps));
 
-        // 核心修復：強制轉成陣列，杜絕單一字母問題
         const filteredCustomers = computed(() => {
           const cat = activeCatalog.value;
           if (user.value.role !== 'admin') {
@@ -473,7 +510,8 @@
           historyList, switchTab, repList, filteredCustomers, pointList,
           onRepChange, onCustomerChange, onPointChange,
           formatNumber, formatDate, getDisplayItems, getExactLabel, isCoreField, getCoreVal,
-          sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag
+          sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag,
+          getSortedWaterItems
         };
       }
     }).mount('#app');
