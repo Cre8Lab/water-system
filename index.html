@@ -35,9 +35,8 @@
 <body class="bg-slate-100 min-h-screen text-slate-800 antialiased p-2 sm:p-4">
   <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
     
-    <!-- 頂部導航列 (徹底解決擠壓換行問題) -->
+    <!-- 頂部導航列 (精簡排版，不折字) -->
     <div class="bg-slate-700 text-slate-100 px-3.5 py-3 flex justify-between items-center border-b border-slate-600 gap-2">
-      <!-- 左側：精簡更新時間與身分 -->
       <div class="min-w-0">
         <div class="flex items-center gap-1.5 whitespace-nowrap">
           <span class="text-xs font-semibold text-slate-300">更新時間</span>
@@ -51,7 +50,7 @@
         </p>
       </div>
 
-      <!-- 右側：加入防折字保護 (whitespace-nowrap & flex-shrink-0) -->
+      <!-- 右側分頁切換按鈕 -->
       <div class="flex-shrink-0 flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-600">
         <button @click="switchTab('water')" 
           :class="currentTab === 'water' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
@@ -83,10 +82,8 @@
     <!-- 狀態：主查詢介面 -->
     <div v-else class="p-3 space-y-3">
       
-      <!-- 篩選選單 (大字體、舒服好按) -->
+      <!-- 篩選選單 -->
       <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
-        
-        <!-- 第一行：業務員 ｜ 客戶代號 -->
         <div class="grid grid-cols-2 gap-2">
           <!-- 業務員 -->
           <div>
@@ -112,7 +109,7 @@
           </div>
         </div>
 
-        <!-- 第二行：取樣點 -->
+        <!-- 取樣點 -->
         <div>
           <label class="block text-sm font-bold text-slate-700 mb-1">取樣點</label>
           <select v-model="selectedPoint" @change="onPointChange" :disabled="!selectedCustomer" 
@@ -129,7 +126,7 @@
         <p class="text-xs text-slate-500 font-medium">正在讀取檢驗數據...</p>
       </div>
 
-      <!-- 查詢結果：卡片拉寬至 94%，釋放文字空間 -->
+      <!-- 查詢結果：卡片全寬展示 -->
       <div v-else-if="historyList.length > 0" class="space-y-2">
         <div class="flex justify-between items-center px-1">
           <span class="text-sm font-bold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
@@ -141,7 +138,7 @@
           </div>
         </div>
 
-        <!-- 橫向輪播容器：卡片拉寬至 94% -->
+        <!-- 橫向輪播容器 (卡片 94% 寬度) -->
         <div ref="sliderRef" 
           @mousedown="startDrag" 
           @mouseleave="stopDrag" 
@@ -149,11 +146,10 @@
           @mousemove="onDrag"
           class="flex overflow-x-auto snap-x snap-mandatory gap-2.5 pb-2 pt-0.5 no-scrollbar grab-cursor -mx-1 px-1">
           
-          <!-- ★ 核心拉寬：w-[94%] sm:w-[96%]，讓內部排版更寬敞 -->
           <div v-for="(item, idx) in historyList" :key="idx" 
             class="w-[94%] sm:w-[96%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm space-y-3 select-none">
             
-            <!-- 卡片頂部：取樣日 (大字突出) -->
+            <!-- 卡片頂部：取樣日 -->
             <div class="flex justify-between items-center border-b border-slate-100 pb-2">
               <span class="text-sm font-bold text-slate-700">
                 取樣日：<span class="text-slate-900 text-base font-extrabold">{{ formatDate(item.sampleDate) }}</span>
@@ -164,33 +160,23 @@
               </span>
             </div>
 
-            <!-- 1. 水質數據 -->
-            <div v-if="currentTab === 'water'" class="space-y-2.5">
-              <!-- 重點指標 pH 與 導電度 (適度縮小為 20px 粗體，協調耐看) -->
-              <div class="grid grid-cols-2 gap-2" v-if="getCoreVal(item, 'ph') !== null || getCoreVal(item, 'cond') !== null">
-                <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center" v-if="getCoreVal(item, 'ph') !== null">
-                  <span class="text-xs font-semibold text-slate-500 block">pH</span>
-                  <span class="text-xl font-bold text-slate-900 tracking-tight">{{ formatNumber(getCoreVal(item, 'ph')) }}</span>
-                </div>
-                <div class="bg-slate-50 p-2 rounded-lg border border-slate-200 text-center" v-if="getCoreVal(item, 'cond') !== null">
-                  <span class="text-xs font-semibold text-slate-500 block">導電度 (Cond.)</span>
-                  <span class="text-xl font-bold text-slate-900 tracking-tight">{{ formatNumber(getCoreVal(item, 'cond')) }}</span>
-                </div>
-              </div>
-
-              <!-- 全部檢驗項目 (項目 14px 粗體 + 數值 16px 特粗黑體，排版大方清晰) -->
-              <div class="grid grid-cols-2 gap-2">
+            <!-- 1. 水質數據 (pH、Cond 統一尺寸，項目靠左、數據靠右拉開間距) -->
+            <div v-if="currentTab === 'water'" class="space-y-2">
+              <div class="grid grid-cols-2 gap-1.5">
                 <div v-for="entry in getSortedWaterItems(item)" :key="entry.label" 
-                  class="flex justify-between items-center px-3 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
-                  <span class="text-sm font-bold text-slate-700 pr-1 truncate" :title="entry.label">{{ entry.label }}</span>
+                  :class="['pH', 'Cond.'].includes(entry.label) ? 'bg-blue-50/50 border-blue-200/80' : 'bg-slate-50/90 border-slate-200/70'"
+                  class="flex justify-between items-center px-2.5 py-2 rounded-lg border">
+                  <!-- 項目名稱：靠左 -->
+                  <span class="text-sm font-bold text-slate-700 text-left truncate pr-1" :title="entry.label">{{ entry.label }}</span>
+                  <!-- 檢驗數值：靠右 (拉開中間距離) -->
                   <span class="font-extrabold text-slate-950 text-base font-mono text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
                 </div>
               </div>
             </div>
 
-            <!-- 2. 微生物數據 -->
+            <!-- 2. 微生物數據 (同樣拉開左右間距) -->
             <div v-if="currentTab === 'microbio'" class="space-y-2.5">
-              <!-- 總菌數大牌 (適度收斂，精緻突出) -->
+              <!-- 總菌數大牌 -->
               <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-center">
                 <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">總菌數 (CFU/mL)</span>
                 <span class="text-2xl font-bold text-slate-900 mt-0.5 block">
@@ -198,15 +184,15 @@
                 </span>
               </div>
 
-              <!-- 餘氯與總氯 (大字排版) -->
-              <div class="grid grid-cols-2 gap-2">
-                <div class="flex justify-between items-center px-3 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
-                  <span class="text-sm font-bold text-slate-700">餘氯 (ppm)</span>
-                  <span class="font-extrabold text-slate-950 text-base font-mono">{{ formatNumber(item.freeCl) }}</span>
+              <!-- 餘氯與總氯 (左右對齊拉開) -->
+              <div class="grid grid-cols-2 gap-1.5">
+                <div class="flex justify-between items-center px-2.5 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
+                  <span class="text-sm font-bold text-slate-700 text-left">餘氯 (ppm)</span>
+                  <span class="font-extrabold text-slate-950 text-base font-mono text-right">{{ formatNumber(item.freeCl) }}</span>
                 </div>
-                <div class="flex justify-between items-center px-3 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
-                  <span class="text-sm font-bold text-slate-700">總氯 (ppm)</span>
-                  <span class="font-extrabold text-slate-950 text-base font-mono">{{ formatNumber(item.totalCl) }}</span>
+                <div class="flex justify-between items-center px-2.5 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
+                  <span class="text-sm font-bold text-slate-700 text-left">總氯 (ppm)</span>
+                  <span class="font-extrabold text-slate-950 text-base font-mono text-right">{{ formatNumber(item.totalCl) }}</span>
                 </div>
               </div>
             </div>
@@ -239,10 +225,10 @@
         const historyList = ref([]);
         const sliderRef = ref(null);
 
-        // ★ 核心優化：輸出標準精簡格式 "10/28 PM 02:36"，徹底釋放頂部空間
+        // 格式: 10/28 PM 02:36
         const lastFileUpdateTime = computed(() => {
           const raw = activeCatalog.value ? (activeCatalog.value.fileUpdatedAt || activeCatalog.value.updatedAt) : '';
-          if (!raw) return '10/28 PM 02:36'; // 若未同步保底呈現
+          if (!raw) return '10/28 PM 02:36';
           const d = new Date(raw);
           if (isNaN(d.getTime())) return '10/28 PM 02:36';
           const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -254,6 +240,7 @@
           return `${m}/${day} ${ampm} ${h12}:${minutes}`;
         });
 
+        // Excel 水質標準順序：pH 與 Cond. 作為第一與第二項，統一列出
         const WATER_FIELD_ORDER = [
           'pH', 'Cond.', 'P-A', 'M-A', 'T-H', 'T-H(濾後)', 'Ca-H', 'Ca-H(濾後)',
           'Cl', 'SO4', 'SiO2', 'SiO2(濾後)', 'TFe', 'Fe(濾後)',
@@ -276,6 +263,7 @@
         };
 
         const EXACT_LABEL_MAP = {
+          'ph': 'pH', 'cond': 'Cond.', 'cond.': 'Cond.',
           'th': 'T-H', 't-h': 'T-H', 'cah': 'Ca-H', 'ca-h': 'Ca-H',
           'ma': 'M-A', 'm-a': 'M-A', 'pa': 'P-A', 'p-a': 'P-A',
           'tfe': 'TFe', 'sio2': 'SiO2', 'so4': 'SO4', 'cl': 'Cl',
@@ -287,21 +275,6 @@
         const getExactLabel = (key) => {
           const cleanKey = String(key).trim();
           return EXACT_LABEL_MAP[cleanKey.toLowerCase()] || cleanKey;
-        };
-
-        const isCoreField = (key) => {
-          const lower = String(key).toLowerCase().trim();
-          return lower === 'ph' || lower === 'cond' || lower === 'cond.';
-        };
-
-        const getCoreVal = (item, type) => {
-          const items = getDisplayItems(item);
-          for (let k in items) {
-            const lower = k.toLowerCase().trim();
-            if (type === 'ph' && lower === 'ph') return items[k];
-            if (type === 'cond' && (lower === 'cond' || lower === 'cond.')) return items[k];
-          }
-          return null;
         };
 
         const getDisplayItems = (item) => {
@@ -319,13 +292,13 @@
           return res;
         };
 
+        // ★ 核心：不再特別抽離 pH 與 Cond.，全部統一依照標準順序輸出
         const getSortedWaterItems = (item) => {
           const items = getDisplayItems(item);
           const entries = [];
 
           for (let rawKey in items) {
             const label = getExactLabel(rawKey);
-            if (isCoreField(label)) continue;
             const val = items[rawKey];
             if (val === null || val === undefined || val === '') continue;
             entries.push({ label, val });
@@ -532,7 +505,7 @@
           selectedRep, selectedCustomer, selectedPoint,
           historyList, switchTab, repList, filteredCustomers, pointList,
           onRepChange, onCustomerChange, onPointChange,
-          formatNumber, formatDate, getDisplayItems, getExactLabel, isCoreField, getCoreVal,
+          formatNumber, formatDate, getDisplayItems, getExactLabel,
           sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag,
           getSortedWaterItems, lastFileUpdateTime
         };
