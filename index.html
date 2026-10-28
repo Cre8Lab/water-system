@@ -143,7 +143,7 @@
           @mousedown="startDrag" 
           @mouseleave="stopDrag" 
           @mouseup="stopDrag" 
-          @mousemove="onDrag"
+          @mousemove="onDrag" 
           class="flex overflow-x-auto snap-x snap-mandatory gap-2.5 pb-2 pt-0.5 no-scrollbar grab-cursor -mx-1 px-1">
           
           <div v-for="(item, idx) in historyList" :key="idx" 
@@ -160,21 +160,21 @@
               </span>
             </div>
 
-            <!-- 1. 水質數據 (pH、Cond 統一尺寸，項目靠左、數據靠右拉開間距) -->
+            <!-- 1. 水質數據 (項目改為黑色 text-slate-950，分析數值改為灰色 text-slate-600) -->
             <div v-if="currentTab === 'water'" class="space-y-2">
               <div class="grid grid-cols-2 gap-1.5">
                 <div v-for="entry in getSortedWaterItems(item)" :key="entry.label" 
                   :class="['pH', 'Cond.'].includes(entry.label) ? 'bg-blue-50/50 border-blue-200/80' : 'bg-slate-50/90 border-slate-200/70'"
                   class="flex justify-between items-center px-2.5 py-2 rounded-lg border">
-                  <!-- 項目名稱：靠左 -->
-                  <span class="text-sm font-bold text-slate-700 text-left truncate pr-1" :title="entry.label">{{ entry.label }}</span>
-                  <!-- 檢驗數值：靠右 (拉開中間距離) -->
-                  <span class="font-extrabold text-slate-950 text-base font-mono text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
+                  <!-- 項目名稱：黑色 -->
+                  <span class="text-sm font-bold text-slate-950 text-left truncate pr-1" :title="entry.label">{{ entry.label }}</span>
+                  <!-- 檢驗數值：灰色 -->
+                  <span class="font-extrabold text-slate-600 text-base font-mono text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
                 </div>
               </div>
             </div>
 
-            <!-- 2. 微生物數據 (同樣拉開左右間距) -->
+            <!-- 2. 微生物數據 (項目黑色，數值灰色) -->
             <div v-if="currentTab === 'microbio'" class="space-y-2.5">
               <!-- 總菌數大牌 -->
               <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-center">
@@ -187,12 +187,12 @@
               <!-- 餘氯與總氯 (左右對齊拉開) -->
               <div class="grid grid-cols-2 gap-1.5">
                 <div class="flex justify-between items-center px-2.5 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
-                  <span class="text-sm font-bold text-slate-700 text-left">餘氯 (ppm)</span>
-                  <span class="font-extrabold text-slate-950 text-base font-mono text-right">{{ formatNumber(item.freeCl) }}</span>
+                  <span class="text-sm font-bold text-slate-950 text-left">餘氯 (ppm)</span>
+                  <span class="font-extrabold text-slate-600 text-base font-mono text-right">{{ formatNumber(item.freeCl) }}</span>
                 </div>
                 <div class="flex justify-between items-center px-2.5 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
-                  <span class="text-sm font-bold text-slate-700 text-left">總氯 (ppm)</span>
-                  <span class="font-extrabold text-slate-950 text-base font-mono text-right">{{ formatNumber(item.totalCl) }}</span>
+                  <span class="text-sm font-bold text-slate-950 text-left">總氯 (ppm)</span>
+                  <span class="font-extrabold text-slate-600 text-base font-mono text-right">{{ formatNumber(item.totalCl) }}</span>
                 </div>
               </div>
             </div>
