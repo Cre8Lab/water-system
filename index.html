@@ -3,586 +3,511 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>水質與微生物檢驗查詢系統</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
-  <!-- Vue 3 -->
-  <script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"></script>
-  <!-- LINE LIFF SDK -->
+  <title>水質與微生物檢驗數據系統</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, query, where, getDocs, doc, getDoc, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBamuQD53WZP-vhARqkveZkfFQWsHwe_hI",
+      authDomain: "lab-system-6bb1b.firebaseapp.com",
+      projectId: "lab-system-6bb1b",
+      storageBucket: "lab-system-6bb1b.firebasestorage.app",
+      messagingSenderId: "586379559133",
+      appId: "1:586379559133:web:e2ef942257c62701a59b34"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    window.db = getFirestore(app);
+    window.fs = { collection, query, where, getDocs, doc, getDoc, addDoc };
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
   <style>
-    /* 隱藏滾動條但保持滾動功能 */
-    .no-scrollbar::-webkit-scrollbar {
-      display: none;
-    }
-    .no-scrollbar {
-      -ms-overflow-style: none;
-      scrollbar-width: none;
-    }
-    /* iOS 平滑滾動與觸控手感 */
-    .smooth-scroll {
-      -webkit-overflow-scrolling: touch;
-      scroll-behavior: smooth;
-    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .grab-cursor { cursor: grab; }
+    .grab-cursor:active { cursor: grabbing; user-select: none; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 min-h-screen font-sans antialiased selection:bg-slate-300">
-  <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col px-4 py-3 pb-8">
+<body class="bg-slate-100 min-h-screen text-slate-800 antialiased p-2 sm:p-4">
+  <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
     
-    <!-- 頂部資訊列：更新時間與模式切換按鈕 -->
-    <header class="flex items-center justify-between gap-2 mb-3 bg-white px-3 py-2.5 rounded-xl shadow-sm border border-slate-200">
-      <div class="flex items-center gap-1.5 flex-shrink-0 min-w-0">
-        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span class="text-xs sm:text-sm font-medium text-slate-600 truncate">更新時間 {{ cloudUpdateTime }}</span>
+    <!-- 頂部導航列 (精簡排版，不折字) -->
+    <div class="bg-slate-700 text-slate-100 px-3.5 py-3 flex justify-between items-center border-b border-slate-600 gap-2">
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5 whitespace-nowrap">
+          <span class="text-xs font-semibold text-slate-300">更新時間</span>
+          <span class="text-xs font-bold text-emerald-300 font-mono tracking-tight">{{ lastFileUpdateTime }}</span>
+        </div>
+        <p class="text-xs text-slate-300 mt-0.5 truncate" v-if="user.name">
+          {{ user.name }} · 
+          <span class="font-medium text-slate-200 bg-slate-600/90 px-1.5 py-0.5 rounded text-[10px]">
+            {{ user.role === 'admin' ? '主管' : '業務' }}
+          </span>
+        </p>
       </div>
+
+      <!-- 右側分頁切換按鈕 -->
+      <div class="flex-shrink-0 flex bg-slate-800/80 p-0.5 rounded-lg border border-slate-600">
+        <button @click="switchTab('water')" 
+          :class="currentTab === 'water' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
+          class="px-2.5 py-1 text-xs rounded-md transition-all whitespace-nowrap flex items-center gap-1">
+          <span>💧 水質</span>
+        </button>
+        <button @click="switchTab('microbio')" 
+          :class="currentTab === 'microbio' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
+          class="px-2.5 py-1 text-xs rounded-md transition-all whitespace-nowrap flex items-center gap-1">
+          <span>🦠 微生物</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 狀態：檢查中 -->
+    <div v-if="checking" class="text-center py-16 px-4">
+      <div class="inline-block animate-spin rounded-full h-7 w-7 border-3 border-slate-500 border-t-transparent mb-2"></div>
+      <p class="text-sm text-slate-500 font-medium">正在啟動系統...</p>
+    </div>
+
+    <!-- 狀態：未授權 -->
+    <div v-else-if="!authorized" class="p-8 text-center">
+      <div class="w-10 h-10 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-2 text-xl font-bold border border-slate-200">✕</div>
+      <h2 class="text-base font-bold text-slate-800">未在白名單授權中</h2>
+      <p class="text-xs text-slate-500 mt-1">請提供此 LINE ID 給管理員加入：</p>
+      <div class="mt-3 p-2 bg-slate-50 rounded text-xs font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
+    </div>
+
+    <!-- 狀態：主查詢介面 -->
+    <div v-else class="p-3 space-y-3">
       
-      <!-- 水質 / 微生物 切換按鈕 -->
-      <div class="flex items-center gap-1.5 flex-shrink-0 whitespace-nowrap">
-        <button 
-          @click="switchMode('water')"
-          :class="currentMode === 'water' ? 'bg-slate-700 text-white font-medium shadow-sm' : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'"
-          class="px-3 py-1 rounded-lg text-xs sm:text-sm transition-all duration-150">
-          水質
-        </button>
-        <button 
-          @click="switchMode('microbio')"
-          :class="currentMode === 'microbio' ? 'bg-slate-700 text-white font-medium shadow-sm' : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'"
-          class="px-3 py-1 rounded-lg text-xs sm:text-sm transition-all duration-150">
-          微生物
-        </button>
-      </div>
-    </header>
-
-    <!-- 篩選條件區域：業務員、客戶代號、取樣點 -->
-    <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-3.5 mb-3.5 space-y-2.5">
-      <!-- 業務員資訊 -->
-      <div class="flex items-center text-sm">
-        <span class="text-slate-500 w-20 flex-shrink-0 font-medium">業務員 :</span>
-        <span class="text-slate-800 font-semibold truncate">{{ currentRepName }}</span>
-        <span v-if="userRole === 'admin'" class="ml-2 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-medium">管理者</span>
-      </div>
-
-      <!-- 客戶代號選單 -->
-      <div class="flex items-center text-sm">
-        <label for="customer-select" class="text-slate-500 w-20 flex-shrink-0 font-medium">客戶代號 :</label>
-        <div class="relative flex-1">
-          <select 
-            id="customer-select"
-            v-model="selectedCustomer" 
-            @change="onCustomerChange"
-            class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-slate-400 focus:outline-none appearance-none font-medium truncate pr-7">
-            <option v-for="c in customerOptions" :key="c.code" :value="c.code">
-              {{ c.name ? `${c.name} (${c.code})` : c.code }}
-            </option>
-          </select>
-          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-          </div>
-        </div>
-      </div>
-
-      <!-- 取樣點選單 -->
-      <div class="flex items-center text-sm">
-        <label for="point-select" class="text-slate-500 w-20 flex-shrink-0 font-medium">取樣點 :</label>
-        <div class="relative flex-1">
-          <select 
-            id="point-select"
-            v-model="selectedPoint" 
-            @change="onPointChange"
-            class="w-full bg-slate-50 border border-slate-300 text-slate-800 text-sm rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-slate-400 focus:outline-none appearance-none font-medium truncate pr-7">
-            <option v-for="pt in pointOptions" :key="pt" :value="pt">
-              {{ pt }}
-            </option>
-          </select>
-          <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 載入中狀態 -->
-    <div v-if="isLoading" class="flex-1 flex flex-col items-center justify-center py-12">
-      <div class="w-8 h-8 border-3 border-slate-300 border-t-slate-700 rounded-full animate-spin mb-3"></div>
-      <p class="text-sm text-slate-500">載入雲端檢測紀錄中...</p>
-    </div>
-
-    <!-- 無數據狀態 -->
-    <div v-else-if="filteredRecords.length === 0" class="flex-1 flex flex-col items-center justify-center py-12 bg-white rounded-2xl border border-slate-200">
-      <svg class="w-12 h-12 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-      <p class="text-sm text-slate-500">此取樣點暫無近五次歷史檢驗數據</p>
-    </div>
-
-    <!-- 數據卡片滑動區域 (橫向泡泡卡片，寬度 94%) -->
-    <main v-else class="relative flex-1 flex flex-col">
-      <!-- 左右滾動按鈕 (供桌面或觸控快速切換) -->
-      <div class="flex items-center justify-between mb-1.5 px-1">
-        <span class="text-xs text-slate-500 font-medium">近 5 次取樣歷史 (橫向滑動查看)</span>
-        <div class="flex gap-1.5">
-          <button 
-            @click="scrollCarousel('left')" 
-            class="w-6 h-6 rounded-full bg-white border border-slate-300 text-slate-700 flex items-center justify-center hover:bg-slate-100 shadow-xs"
-            aria-label="前一筆">
-            ‹
-          </button>
-          <button 
-            @click="scrollCarousel('right')" 
-            class="w-6 h-6 rounded-full bg-white border border-slate-300 text-slate-700 flex items-center justify-center hover:bg-slate-100 shadow-xs"
-            aria-label="後一筆">
-            ›
-          </button>
-        </div>
-      </div>
-
-      <!-- 卡片輪播滾動容器 -->
-      <div 
-        ref="carouselRef" 
-        class="flex overflow-x-auto gap-4 snap-x snap-mandatory py-1 no-scrollbar smooth-scroll">
-        
-        <div 
-          v-for="(record, idx) in filteredRecords" 
-          :key="record.id || idx" 
-          class="w-[94%] flex-shrink-0 snap-center bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 flex flex-col">
-          
-          <!-- 卡片日期標籤 -->
-          <div class="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-2.5">
-            <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 tracking-wide">
-              {{ record.sampleDate }}
-            </span>
-            <span class="text-[11px] text-slate-400">第 {{ idx + 1 }} / {{ filteredRecords.length }} 筆</span>
-          </div>
-
-          <!-- 分析數據明細列表 -->
-          <!-- 顏色已對調：項目為深黑色 (text-slate-900)，數據為深灰色 (text-slate-600) -->
-          <!-- 項目靠左、數據靠右，間距拉開不貼近 -->
-          <div class="space-y-1.5">
-            <div 
-              v-for="item in record.displayItems" 
-              :key="item.label" 
-              class="flex justify-between items-center py-1 border-b border-slate-50 last:border-0 text-sm sm:text-base">
-              
-              <!-- 項目名稱：深黑色、靠左、清晰中黑 -->
-              <span class="text-slate-900 font-medium text-left tracking-wide">
-                {{ item.label }}
-              </span>
-
-              <!-- 檢測數據：深灰色、靠右、沉穩不壓迫 -->
-              <span 
-                v-if="item.isHtml" 
-                v-html="item.value" 
-                class="text-slate-600 font-semibold text-right tracking-wider">
-              </span>
-              <span 
-                v-else 
-                class="text-slate-600 font-semibold text-right tracking-wider">
-                {{ item.value }}
-              </span>
+      <!-- 篩選選單 -->
+      <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
+        <div class="grid grid-cols-2 gap-2">
+          <!-- 業務員 -->
+          <div>
+            <label class="block text-sm font-bold text-slate-700 mb-1">業務員</label>
+            <select v-if="user.role === 'admin'" v-model="selectedRep" @change="onRepChange" 
+              class="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white text-slate-800 font-medium focus:outline-none focus:border-slate-500 shadow-xs">
+              <option value="ALL">全部業務員</option>
+              <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
+            </select>
+            <div v-else class="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm bg-slate-100 text-slate-800 font-bold">
+              {{ user.name }}
             </div>
           </div>
+
+          <!-- 客戶代號 -->
+          <div>
+            <label class="block text-sm font-bold text-slate-700 mb-1">客戶代號</label>
+            <select v-model="selectedCustomer" @change="onCustomerChange" 
+              class="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white text-slate-800 font-medium focus:outline-none focus:border-slate-500 shadow-xs">
+              <option value="">-- 請選擇 --</option>
+              <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
+            </select>
+          </div>
         </div>
 
+        <!-- 取樣點 -->
+        <div>
+          <label class="block text-sm font-bold text-slate-700 mb-1">取樣點</label>
+          <select v-model="selectedPoint" @change="onPointChange" :disabled="!selectedCustomer" 
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-800 font-medium disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-slate-500 shadow-xs">
+            <option value="">-- 請選擇取樣點 --</option>
+            <option v-for="p in pointList" :key="p" :value="p">{{ p }}</option>
+          </select>
+        </div>
       </div>
-    </main>
 
-    <!-- 底部版權與使用者標識 -->
-    <footer class="mt-4 text-center text-[11px] text-slate-400">
-      水質管理系統 &copy; 2026 &middot; User: {{ userIdDisplay }}
-    </footer>
+      <!-- 讀取中指示 -->
+      <div v-if="fetchingDetail" class="text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-500 border-t-transparent mb-1.5"></div>
+        <p class="text-xs text-slate-500 font-medium">正在讀取檢驗數據...</p>
+      </div>
 
+      <!-- 查詢結果：卡片全寬展示 -->
+      <div v-else-if="historyList.length > 0" class="space-y-2">
+        <div class="flex justify-between items-center px-1">
+          <span class="text-sm font-bold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
+          
+          <div class="flex items-center gap-1.5">
+            <button @click="scrollPrev" title="上一期" class="w-6 h-6 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 flex items-center justify-center text-sm font-bold transition shadow-xs">‹</button>
+            <span class="text-xs text-slate-500 font-medium">左右滑動</span>
+            <button @click="scrollNext" title="下一期" class="w-6 h-6 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 flex items-center justify-center text-sm font-bold transition shadow-xs">›</button>
+          </div>
+        </div>
+
+        <!-- 橫向輪播容器 (卡片 94% 寬度) -->
+        <div ref="sliderRef" 
+          @mousedown="startDrag" 
+          @mouseleave="stopDrag" 
+          @mouseup="stopDrag" 
+          @mousemove="onDrag"
+          class="flex overflow-x-auto snap-x snap-mandatory gap-2.5 pb-2 pt-0.5 no-scrollbar grab-cursor -mx-1 px-1">
+          
+          <div v-for="(item, idx) in historyList" :key="idx" 
+            class="w-[94%] sm:w-[96%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm space-y-3 select-none">
+            
+            <!-- 卡片頂部：取樣日 -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+              <span class="text-sm font-bold text-slate-700">
+                取樣日：<span class="text-slate-900 text-base font-extrabold">{{ formatDate(item.sampleDate) }}</span>
+              </span>
+              <span class="px-2 py-0.5 rounded text-xs font-semibold" 
+                :class="idx === 0 ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'">
+                {{ idx === 0 ? '最新一期' : '前期 ' + idx }}
+              </span>
+            </div>
+
+            <!-- 1. 水質數據 (pH、Cond 統一尺寸，項目靠左、數據靠右拉開間距) -->
+            <div v-if="currentTab === 'water'" class="space-y-2">
+              <div class="grid grid-cols-2 gap-1.5">
+                <div v-for="entry in getSortedWaterItems(item)" :key="entry.label" 
+                  :class="['pH', 'Cond.'].includes(entry.label) ? 'bg-blue-50/50 border-blue-200/80' : 'bg-slate-50/90 border-slate-200/70'"
+                  class="flex justify-between items-center px-2.5 py-2 rounded-lg border">
+                  <!-- 項目名稱：靠左 -->
+                  <span class="text-sm font-bold text-slate-700 text-left truncate pr-1" :title="entry.label">{{ entry.label }}</span>
+                  <!-- 檢驗數值：靠右 (拉開中間距離) -->
+                  <span class="font-extrabold text-slate-950 text-base font-mono text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 2. 微生物數據 (同樣拉開左右間距) -->
+            <div v-if="currentTab === 'microbio'" class="space-y-2.5">
+              <!-- 總菌數大牌 -->
+              <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-center">
+                <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">總菌數 (CFU/mL)</span>
+                <span class="text-2xl font-bold text-slate-900 mt-0.5 block">
+                  {{ item.colonyCount }} × 10<sup class="text-base font-bold text-slate-600">{{ item.dilutionExp !== null && item.dilutionExp !== undefined ? item.dilutionExp : '0' }}</sup>
+                </span>
+              </div>
+
+              <!-- 餘氯與總氯 (左右對齊拉開) -->
+              <div class="grid grid-cols-2 gap-1.5">
+                <div class="flex justify-between items-center px-2.5 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
+                  <span class="text-sm font-bold text-slate-700 text-left">餘氯 (ppm)</span>
+                  <span class="font-extrabold text-slate-950 text-base font-mono text-right">{{ formatNumber(item.freeCl) }}</span>
+                </div>
+                <div class="flex justify-between items-center px-2.5 py-2 bg-slate-50/90 rounded-lg border border-slate-200/70">
+                  <span class="text-sm font-bold text-slate-700 text-left">總氯 (ppm)</span>
+                  <span class="font-extrabold text-slate-950 text-base font-mono text-right">{{ formatNumber(item.totalCl) }}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
-    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
 
     createApp({
       setup() {
-        // 設定常數
-        const LIFF_ID = '2012237984-DUU144BJ';
-        const FIREBASE_PROJECT_ID = 'lab-system-6bb1b';
+        const checking = ref(true);
+        const authorized = ref(false);
+        const fetchingDetail = ref(false);
+        const user = ref({ lineId: '', name: '', role: '', allowedCustomers: [] });
+        
+        const currentTab = ref('water');
+        const selectedRep = ref('ALL');
+        const selectedCustomer = ref('');
+        const selectedPoint = ref('');
 
-        // 響應式狀態
-        const currentMode = ref('water'); // 'water' 或 'microbio'
-        const cloudUpdateTime = ref('10/28 PM 02:36');
-        const isLoading = ref(false);
-        const carouselRef = ref(null);
+        const waterCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {}, fileUpdatedAt: '' });
+        const microbioCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {}, fileUpdatedAt: '' });
+        
+        const queryMemoryCache = {};
+        const historyList = ref([]);
+        const sliderRef = ref(null);
 
-        // 使用者資訊
-        const lineUserId = ref('');
-        const currentRepName = ref('湯生(Tom)');
-        const userRole = ref('sales'); // 'admin' 或 'sales'
-        const allowedCustomers = ref(['JVCM', 'JIEM']);
-
-        // 選單資料
-        const customerOptions = ref([
-          { code: 'JVCM', name: '欣興電子' },
-          { code: 'JIEM', name: '華通電腦' }
-        ]);
-        const selectedCustomer = ref('JVCM');
-
-        const waterPointsMap = ref({
-          'JVCM': ['PC5(37)-熱水/外管補水', 'PC5(37)-熱水/熱水槽', 'PC5(37)-冰水/外管補水', 'PC5(37)-冷卻水塔'],
-          'JIEM': ['一廠-冷卻水塔A', '一廠-冰水主機', '二廠-鍋爐給水']
+        // 格式: 10/28 PM 02:36
+        const lastFileUpdateTime = computed(() => {
+          const raw = activeCatalog.value ? (activeCatalog.value.fileUpdatedAt || activeCatalog.value.updatedAt) : '';
+          if (!raw) return '10/28 PM 02:36';
+          const d = new Date(raw);
+          if (isNaN(d.getTime())) return '10/28 PM 02:36';
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          const hours = d.getHours();
+          const minutes = String(d.getMinutes()).padStart(2, '0');
+          const ampm = hours >= 12 ? 'PM' : 'AM';
+          const h12 = String(hours % 12 || 12).padStart(2, '0');
+          return `${m}/${day} ${ampm} ${h12}:${minutes}`;
         });
 
-        const microbioPointsMap = ref({
-          'JVCM': ['PC5(37)-冷卻水塔', 'PC5(37)-冷卻水塔B'],
-          'JIEM': ['一廠-冷卻水塔A', '二廠-冷卻水塔B']
-        });
+        // Excel 水質標準順序：pH 與 Cond. 作為第一與第二項，統一列出
+        const WATER_FIELD_ORDER = [
+          'pH', 'Cond.', 'P-A', 'M-A', 'T-H', 'T-H(濾後)', 'Ca-H', 'Ca-H(濾後)',
+          'Cl', 'SO4', 'SiO2', 'SiO2(濾後)', 'TFe', 'Fe(濾後)',
+          'Zn', 'Zn(濾後)', 'Cu', 'Cu(濾後)', 'TP', 'TP(濾後)',
+          'TIP', 'TIP(濾後)', 'OP', 'OP(濾後)', '油份', 'SO3', 'SS', '濁度',
+          'EDTA', '比重', 'NO2', 'MoO4', 'MoO4(濾後)', 'NH3-N', 'F',
+          'MLSS', 'VSS', 'COD', 'DEHA', '含水率', '酸度', 'NaOH %',
+          'Fe 2+', 'TTA', '有效氯%', '灰份%', 'TDS', 'TSS',
+          'Al', 'Al(過濾)', 'Mn', 'Mn(過濾)', 'Na', 'Na(過濾)', 'K', 'K(過濾)',
+          'N2H4', 'Sr', 'Ba', 'Cd', 'Cr', 'Co', 'Ni', 'B', 'B(濾後)',
+          'V', 'Se', 'As', 'H2S', 'PVA', 'PMA', 'Ag', 'Hg', 'Kathon',
+          'Pb', 'Bi', 'Ga', 'In', 'Li', 'Ti', 'Carbohydrazide'
+        ];
 
-        const pointOptions = computed(() => {
-          const map = currentMode.value === 'water' ? waterPointsMap.value : microbioPointsMap.value;
-          return map[selectedCustomer.value] || [];
-        });
-        const selectedPoint = ref('PC5(37)-熱水/外管補水');
+        const ensureArray = (val) => {
+          if (!val) return [];
+          if (Array.isArray(val)) return val;
+          if (typeof val === 'string') return val.split(',').map(s => s.trim()).filter(Boolean);
+          return [];
+        };
 
-        // 水質模擬與緩存數據
-        const waterRecords = ref([
-          {
-            id: 'w1',
-            customer: 'JVCM',
-            point: 'PC5(37)-熱水/外管補水',
-            sampleDate: '2026/10/21',
-            displayItems: [
-              { label: 'pH', value: '8.2' },
-              { label: 'Cond.', value: '165' },
-              { label: 'P-A', value: '0' },
-              { label: 'M-A', value: '12' },
-              { label: 'T-H', value: '0' },
-              { label: 'Ca-H', value: '0' },
-              { label: 'Cl', value: '14.2' },
-              { label: 'SO4', value: '18.5' },
-              { label: 'SiO2', value: '8.1' },
-              { label: 'TFe', value: '0.08' },
-              { label: 'Zn', value: '0.02' }
-            ]
-          },
-          {
-            id: 'w2',
-            customer: 'JVCM',
-            point: 'PC5(37)-熱水/外管補水',
-            sampleDate: '2026/10/14',
-            displayItems: [
-              { label: 'pH', value: '8.1' },
-              { label: 'Cond.', value: '160' },
-              { label: 'P-A', value: '0' },
-              { label: 'M-A', value: '11' },
-              { label: 'T-H', value: '0' },
-              { label: 'Ca-H', value: '0' },
-              { label: 'Cl', value: '13.8' },
-              { label: 'SO4', value: '17.9' },
-              { label: 'SiO2', value: '7.9' },
-              { label: 'TFe', value: '0.07' },
-              { label: 'Zn', value: '0.02' }
-            ]
-          },
-          {
-            id: 'w3',
-            customer: 'JVCM',
-            point: 'PC5(37)-熱水/外管補水',
-            sampleDate: '2026/10/07',
-            displayItems: [
-              { label: 'pH', value: '8.3' },
-              { label: 'Cond.', value: '172' },
-              { label: 'P-A', value: '0' },
-              { label: 'M-A', value: '14' },
-              { label: 'T-H', value: '0' },
-              { label: 'Ca-H', value: '0' },
-              { label: 'Cl', value: '15.0' },
-              { label: 'SO4', value: '19.2' },
-              { label: 'SiO2', value: '8.4' },
-              { label: 'TFe', value: '0.09' },
-              { label: 'Zn', value: '0.02' }
-            ]
-          },
-          {
-            id: 'w4',
-            customer: 'JVCM',
-            point: 'PC5(37)-熱水/外管補水',
-            sampleDate: '2026/09/30',
-            displayItems: [
-              { label: 'pH', value: '8.2' },
-              { label: 'Cond.', value: '168' },
-              { label: 'P-A', value: '0' },
-              { label: 'M-A', value: '13' },
-              { label: 'T-H', value: '0' },
-              { label: 'Ca-H', value: '0' },
-              { label: 'Cl', value: '14.5' },
-              { label: 'SO4', value: '18.8' },
-              { label: 'SiO2', value: '8.2' },
-              { label: 'TFe', value: '0.08' },
-              { label: 'Zn', value: '0.02' }
-            ]
-          },
-          {
-            id: 'w5',
-            customer: 'JVCM',
-            point: 'PC5(37)-熱水/外管補水',
-            sampleDate: '2026/09/23',
-            displayItems: [
-              { label: 'pH', value: '8.0' },
-              { label: 'Cond.', value: '159' },
-              { label: 'P-A', value: '0' },
-              { label: 'M-A', value: '10' },
-              { label: 'T-H', value: '0' },
-              { label: 'Ca-H', value: '0' },
-              { label: 'Cl', value: '13.2' },
-              { label: 'SO4', value: '17.4' },
-              { label: 'SiO2', value: '7.8' },
-              { label: 'TFe', value: '0.06' },
-              { label: 'Zn', value: '0.01' }
-            ]
+        const EXACT_LABEL_MAP = {
+          'ph': 'pH', 'cond': 'Cond.', 'cond.': 'Cond.',
+          'th': 'T-H', 't-h': 'T-H', 'cah': 'Ca-H', 'ca-h': 'Ca-H',
+          'ma': 'M-A', 'm-a': 'M-A', 'pa': 'P-A', 'p-a': 'P-A',
+          'tfe': 'TFe', 'sio2': 'SiO2', 'so4': 'SO4', 'cl': 'Cl',
+          'cu': 'Cu', 'zn': 'Zn', 'al': 'Al', 'mn': 'Mn',
+          'tp': 'TP', 'tip': 'TIP', 'op': 'OP', 'turbidity': '濁度',
+          'ss': 'SS', 'cod': 'COD', 'no2': 'NO2', 'moo4': 'MoO4', 'nh3-n': 'NH3-N'
+        };
+
+        const getExactLabel = (key) => {
+          const cleanKey = String(key).trim();
+          return EXACT_LABEL_MAP[cleanKey.toLowerCase()] || cleanKey;
+        };
+
+        const getDisplayItems = (item) => {
+          if (!item) return {};
+          if (item.items && typeof item.items === 'object' && Object.keys(item.items).length > 0) {
+            return item.items;
           }
-        ]);
-
-        // 微生物模擬與緩存數據 (支援 10⁰ 上標顯示)
-        const microbioRecords = ref([
-          {
-            id: 'm1',
-            customer: 'JVCM',
-            point: 'PC5(37)-冷卻水塔',
-            sampleDate: '2026/10/21',
-            displayItems: [
-              { label: '總菌數 (CFU/mL)', value: '15 &times; 10<sup>0</sup>', isHtml: true },
-              { label: '餘氯 (ppm)', value: '0.2' },
-              { label: '總氯 (ppm)', value: '0.5' }
-            ]
-          },
-          {
-            id: 'm2',
-            customer: 'JVCM',
-            point: 'PC5(37)-冷卻水塔',
-            sampleDate: '2026/10/14',
-            displayItems: [
-              { label: '總菌數 (CFU/mL)', value: '12 &times; 10<sup>0</sup>', isHtml: true },
-              { label: '餘氯 (ppm)', value: '0.2' },
-              { label: '總氯 (ppm)', value: '0.4' }
-            ]
-          },
-          {
-            id: 'm3',
-            customer: 'JVCM',
-            point: 'PC5(37)-冷卻水塔',
-            sampleDate: '2026/10/07',
-            displayItems: [
-              { label: '總菌數 (CFU/mL)', value: '20 &times; 10<sup>0</sup>', isHtml: true },
-              { label: '餘氯 (ppm)', value: '0.1' },
-              { label: '總氯 (ppm)', value: '0.3' }
-            ]
+          const meta = ['customer', 'salesRep', 'sampleDate', 'samplePoint', 'testDate', 'sampleTime', 'items'];
+          const res = {};
+          for (let k in item) {
+            if (!meta.includes(k) && item[k] !== null && item[k] !== undefined && item[k] !== '') {
+              res[k] = item[k];
+            }
           }
-        ]);
+          return res;
+        };
 
-        // 依據當前選單過濾數據
-        const filteredRecords = computed(() => {
-          const list = currentMode.value === 'water' ? waterRecords.value : microbioRecords.value;
-          return list.filter(r => r.customer === selectedCustomer.value && r.point === selectedPoint.value);
-        });
+        // ★ 核心：不再特別抽離 pH 與 Cond.，全部統一依照標準順序輸出
+        const getSortedWaterItems = (item) => {
+          const items = getDisplayItems(item);
+          const entries = [];
 
-        // 模式切換
-        const switchMode = (mode) => {
-          if (currentMode.value === mode) return;
-          currentMode.value = mode;
-          // 自動更新取樣點
-          const options = pointOptions.value;
-          if (options && options.length > 0) {
-            selectedPoint.value = options[0];
+          for (let rawKey in items) {
+            const label = getExactLabel(rawKey);
+            const val = items[rawKey];
+            if (val === null || val === undefined || val === '') continue;
+            entries.push({ label, val });
           }
-          fetchFirestoreData();
-          nextTick(() => {
-            if (carouselRef.value) carouselRef.value.scrollLeft = 0;
+
+          entries.sort((a, b) => {
+            const idxA = WATER_FIELD_ORDER.indexOf(a.label);
+            const idxB = WATER_FIELD_ORDER.indexOf(b.label);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA !== -1) return -1;
+            if (idxB !== -1) return 1;
+            return a.label.localeCompare(b.label);
           });
+
+          return entries;
+        };
+
+        let isDown = false, startX = 0, scrollLeftVal = 0;
+        const startDrag = (e) => {
+          isDown = true;
+          startX = e.pageX - sliderRef.value.offsetLeft;
+          scrollLeftVal = sliderRef.value.scrollLeft;
+        };
+        const stopDrag = () => { isDown = false; };
+        const onDrag = (e) => {
+          if (!isDown) return;
+          e.preventDefault();
+          const x = e.pageX - sliderRef.value.offsetLeft;
+          sliderRef.value.scrollLeft = scrollLeftVal - (x - startX) * 1.5;
+        };
+        const scrollPrev = () => { if (sliderRef.value) sliderRef.value.scrollBy({ left: -sliderRef.value.clientWidth * 0.9, behavior: 'smooth' }); };
+        const scrollNext = () => { if (sliderRef.value) sliderRef.value.scrollBy({ left: sliderRef.value.clientWidth * 0.9, behavior: 'smooth' }); };
+
+        onMounted(() => {
+          window.addEventListener('wheel', (e) => {
+            if (sliderRef.value && sliderRef.value.contains(e.target)) {
+              if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) sliderRef.value.scrollLeft += e.deltaY;
+            }
+          }, { passive: true });
+        });
+
+        const formatNumber = (val) => {
+          if (val === null || val === undefined || val === '') return '-';
+          const num = Number(val);
+          if (!isNaN(num) && String(val).trim() !== '') {
+            const str = num.toString();
+            if (str.includes('.')) {
+              const decimals = str.split('.')[1].length;
+              if (decimals > 4) return parseFloat(num.toFixed(4));
+            }
+            return num;
+          }
+          return val;
+        };
+
+        const formatDate = (val) => {
+          if (!val) return '-';
+          const d = new Date(val);
+          if (!isNaN(d.getTime())) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}/${m}/${day}`;
+          }
+          return String(val).replace(/T.*$/, '').trim();
+        };
+
+        const initSystem = async () => {
+          try {
+            await liff.init({ liffId: "2012237984-DUU144BJ" });
+            if (!liff.isLoggedIn()) {
+              liff.login({ redirectUri: window.location.href });
+              return;
+            }
+            const profile = await liff.getProfile();
+            user.value.lineId = profile.userId;
+
+            const userSnap = await window.fs.getDoc(window.fs.doc(window.db, "users_whitelist", profile.userId));
+            if (userSnap.exists()) {
+              authorized.value = true;
+              Object.assign(user.value, userSnap.data());
+              if (user.value.role !== 'admin') {
+                selectedRep.value = user.value.name;
+              }
+              await loadCatalogs();
+            } else {
+              authorized.value = false;
+            }
+          } catch (err) {
+            console.error(err);
+          } finally {
+            checking.value = false;
+          }
+        };
+
+        if (window.db && window.fs) initSystem();
+        else window.addEventListener('firebase-ready', initSystem, { once: true });
+
+        const loadCatalogs = async () => {
+          try {
+            const [wCat, mCat] = await Promise.all([
+              window.fs.getDoc(window.fs.doc(window.db, "metadata", "water_catalog")),
+              window.fs.getDoc(window.fs.doc(window.db, "metadata", "microbio_catalog"))
+            ]);
+            if (wCat.exists()) waterCatalog.value = wCat.data();
+            if (mCat.exists()) microbioCatalog.value = mCat.data();
+          } catch (e) {
+            console.error("目錄載入失敗:", e);
+          }
+        };
+
+        const activeCatalog = computed(() => {
+          return currentTab.value === 'water' ? waterCatalog.value : microbioCatalog.value;
+        });
+
+        const switchTab = (tab) => {
+          if (currentTab.value === tab) return;
+          currentTab.value = tab;
+          selectedCustomer.value = '';
+          selectedPoint.value = '';
+          historyList.value = [];
+        };
+
+        const repList = computed(() => ensureArray(activeCatalog.value.reps));
+
+        const filteredCustomers = computed(() => {
+          const cat = activeCatalog.value;
+          if (user.value.role !== 'admin') {
+            const allowed = ensureArray(user.value.allowedCustomers);
+            const allCust = ensureArray(cat.customers);
+            return allowed.filter(c => allCust.includes(c));
+          }
+          if (selectedRep.value !== 'ALL' && cat.repCustomerMap) {
+            return ensureArray(cat.repCustomerMap[selectedRep.value]);
+          }
+          return ensureArray(cat.customers);
+        });
+
+        const pointList = computed(() => {
+          if (!selectedCustomer.value || !activeCatalog.value.customerPointsMap) return [];
+          return ensureArray(activeCatalog.value.customerPointsMap[selectedCustomer.value]);
+        });
+
+        const onRepChange = () => {
+          selectedCustomer.value = '';
+          selectedPoint.value = '';
+          historyList.value = [];
         };
 
         const onCustomerChange = () => {
-          const options = pointOptions.value;
-          if (options && options.length > 0) {
-            selectedPoint.value = options[0];
+          selectedPoint.value = '';
+          historyList.value = [];
+        };
+
+        const onPointChange = async () => {
+          if (!selectedCustomer.value || !selectedPoint.value) {
+            historyList.value = [];
+            return;
           }
-          fetchFirestoreData();
-          nextTick(() => {
-            if (carouselRef.value) carouselRef.value.scrollLeft = 0;
-          });
-        };
 
-        const onPointChange = () => {
-          nextTick(() => {
-            if (carouselRef.value) carouselRef.value.scrollLeft = 0;
-          });
-        };
-
-        // 輪播滑動
-        const scrollCarousel = (direction) => {
-          if (!carouselRef.value) return;
-          const container = carouselRef.value;
-          const scrollAmount = container.clientWidth * 0.9;
-          container.scrollBy({
-            left: direction === 'left' ? -scrollAmount : scrollAmount,
-            behavior: 'smooth'
-          });
-        };
-
-        // 數值四捨五入輔助函式
-        const formatValue = (val) => {
-          if (val === null || val === undefined || val === '') return '-';
-          if (typeof val === 'number') {
-            return Number.isInteger(val) ? val.toString() : parseFloat(val.toFixed(4)).toString();
+          const cacheKey = `${currentTab.value}_${selectedCustomer.value}_${selectedPoint.value}`;
+          if (queryMemoryCache[cacheKey]) {
+            historyList.value = queryMemoryCache[cacheKey];
+            return;
           }
-          const num = Number(val);
-          if (!isNaN(num) && val.trim() !== '') {
-            return Number.isInteger(num) ? num.toString() : parseFloat(num.toFixed(4)).toString();
-          }
-          return val.toString();
-        };
 
-        // 從 Firestore REST 取得最新資料
-        const fetchFirestoreData = async () => {
+          fetchingDetail.value = true;
           try {
-            const collection = currentMode.value === 'water' ? 'water_data' : 'microbio_data';
-            const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}?pageSize=50`;
-            
-            const response = await fetch(url);
-            if (!response.ok) return; // 若受限或無權限，保留預設資料
-            
-            const data = await response.json();
-            if (!data.documents || data.documents.length === 0) return;
-
-            const parsedList = data.documents.map(doc => {
-              const fields = doc.fields || {};
-              const getVal = (f) => {
-                if (!f) return null;
-                if (f.stringValue !== undefined) return f.stringValue;
-                if (f.doubleValue !== undefined) return f.doubleValue;
-                if (f.integerValue !== undefined) return parseInt(f.integerValue);
-                if (f.timestampValue !== undefined) return f.timestampValue;
-                return null;
-              };
-
-              const cust = getVal(fields.customer) || '';
-              const pt = getVal(fields.point) || '';
-              const rawDate = getVal(fields.sampleDate) || '';
-              // 格式化日期為 YYYY/MM/DD
-              let sampleDate = rawDate.replace(/-/g, '/').split('T')[0];
-
-              // 解析各項目
-              const displayItems = [];
-              if (currentMode.value === 'water') {
-                const standardKeys = ['pH', 'Cond.', 'P-A', 'M-A', 'T-H', 'Ca-H', 'Cl', 'SO4', 'SiO2', 'TFe', 'Zn', 'Cu', 'Al', 'Mn', 'SS', '濁度'];
-                standardKeys.forEach(key => {
-                  if (fields[key]) {
-                    const raw = getVal(fields[key]);
-                    if (raw !== null && raw !== '') {
-                      displayItems.push({ label: key, value: formatValue(raw) });
-                    }
-                  }
-                });
-              } else {
-                if (fields.totalBacteria) {
-                  let bVal = getVal(fields.totalBacteria);
-                  let formatted = formatValue(bVal);
-                  if (formatted.includes('10^') || formatted.includes('100') || formatted.includes('10⁰')) {
-                    formatted = formatted.replace(/10\^?0/g, '10<sup>0</sup>');
-                    displayItems.push({ label: '總菌數 (CFU/mL)', value: formatted, isHtml: true });
-                  } else {
-                    displayItems.push({ label: '總菌數 (CFU/mL)', value: formatted });
-                  }
-                }
-                if (fields.freeChlorine) displayItems.push({ label: '餘氯 (ppm)', value: formatValue(getVal(fields.freeChlorine)) });
-                if (fields.totalChlorine) displayItems.push({ label: '總氯 (ppm)', value: formatValue(getVal(fields.totalChlorine)) });
-              }
-
-              return {
-                id: doc.name,
-                customer: cust,
-                point: pt,
-                sampleDate: sampleDate,
-                displayItems: displayItems
-              };
+            const collName = currentTab.value === 'water' ? 'water_data' : 'microbio_data';
+            const q = window.fs.query(
+              window.fs.collection(window.db, collName),
+              window.fs.where("customer", "==", selectedCustomer.value)
+            );
+            const snap = await window.fs.getDocs(q);
+            const list = [];
+            snap.forEach(d => {
+              const data = d.data();
+              if (data.samplePoint === selectedPoint.value) list.push(data);
             });
 
-            // 依日期降冪排序
-            parsedList.sort((a, b) => (b.sampleDate || '').localeCompare(a.sampleDate || ''));
+            list.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
+            const top5 = list.slice(0, 5);
 
-            if (currentMode.value === 'water') {
-              waterRecords.value = parsedList;
-            } else {
-              microbioRecords.value = parsedList;
-            }
+            queryMemoryCache[cacheKey] = top5;
+            historyList.value = top5;
 
-          } catch (err) {
-            console.warn('載入 Firestore 資料異常，維持本地資料:', err);
-          }
-        };
-
-        // 載入元數據 (更新時間與白名單權限)
-        const loadMetadata = async () => {
-          try {
-            const metaUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/metadata/water_catalog`;
-            const res = await fetch(metaUrl);
-            if (res.ok) {
-              const metaDoc = await res.json();
-              if (metaDoc.fields && metaDoc.fields.lastUpdate) {
-                cloudUpdateTime.value = metaDoc.fields.lastUpdate.stringValue || cloudUpdateTime.value;
-              }
-            }
+            window.fs.addDoc(window.fs.collection(window.db, "audit_logs"), {
+              timestamp: new Date().toISOString(),
+              lineId: user.value.lineId,
+              userName: user.value.name,
+              system: currentTab.value,
+              customer: selectedCustomer.value,
+              samplePoint: selectedPoint.value
+            });
           } catch (e) {
-            console.log('使用預設更新時間');
+            console.error("查詢失敗:", e);
+          } finally {
+            fetchingDetail.value = false;
           }
         };
-
-        // 初始化 LIFF
-        const initLiff = async () => {
-          try {
-            if (typeof liff === 'undefined') return;
-            await liff.init({ liffId: LIFF_ID });
-            if (liff.isLoggedIn()) {
-              const profile = await liff.getProfile();
-              lineUserId.value = profile.userId;
-              // 查詢白名單
-              try {
-                const userDocUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users_whitelist/${profile.userId}`;
-                const uRes = await fetch(userDocUrl);
-                if (uRes.ok) {
-                  const uDoc = await uRes.json();
-                  if (uDoc.fields) {
-                    if (uDoc.fields.name) currentRepName.value = uDoc.fields.name.stringValue;
-                    if (uDoc.fields.role) userRole.value = uDoc.fields.role.stringValue;
-                  }
-                }
-              } catch (e) {
-                console.log('白名單讀取跳過');
-              }
-            }
-          } catch (err) {
-            console.log('LIFF 初始化完成或瀏覽器預覽模式');
-          }
-        };
-
-        const userIdDisplay = computed(() => {
-          return lineUserId.value ? lineUserId.value.substring(0, 8) + '...' : 'Browser/Guest';
-        });
-
-        onMounted(async () => {
-          await loadMetadata();
-          await initLiff();
-          await fetchFirestoreData();
-        });
 
         return {
-          currentMode,
-          cloudUpdateTime,
-          isLoading,
-          carouselRef,
-          currentRepName,
-          userRole,
-          customerOptions,
-          selectedCustomer,
-          pointOptions,
-          selectedPoint,
-          filteredRecords,
-          userIdDisplay,
-          switchMode,
-          onCustomerChange,
-          onPointChange,
-          scrollCarousel
+          checking, authorized, fetchingDetail, user, currentTab,
+          selectedRep, selectedCustomer, selectedPoint,
+          historyList, switchTab, repList, filteredCustomers, pointList,
+          onRepChange, onCustomerChange, onPointChange,
+          formatNumber, formatDate, getDisplayItems, getExactLabel,
+          sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag,
+          getSortedWaterItems, lastFileUpdateTime
         };
       }
     }).mount('#app');
