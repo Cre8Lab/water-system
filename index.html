@@ -32,72 +32,77 @@
     .grab-cursor:active { cursor: grabbing; user-select: none; }
   </style>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-700 antialiased p-2 sm:p-4">
+<body class="bg-slate-100 min-h-screen text-slate-800 antialiased p-2 sm:p-4">
   <div id="app" class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
     
-    <!-- 頂部清爽柔和導航列 -->
-    <div class="bg-slate-700 text-slate-100 px-4 py-3 flex justify-between items-center border-b border-slate-600">
+    <!-- 頂部清爽柔和導航列 (呈現雲端檔案真正的存檔更新時間) -->
+    <div class="bg-slate-700 text-slate-100 px-4 py-3.5 flex justify-between items-center border-b border-slate-600">
       <div>
-        <h1 class="text-sm font-semibold tracking-wide text-white">檢驗數據查詢系統</h1>
-        <p class="text-[11px] text-slate-300 mt-0.5" v-if="user.name">
+        <div class="text-xs sm:text-sm font-bold text-white font-mono tracking-tight flex items-center gap-1.5 flex-wrap">
+          <span class="text-slate-200">數據更新時間</span>
+          <span class="text-emerald-300 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-600/70">
+            {{ lastFileUpdateTime }}
+          </span>
+        </div>
+        <p class="text-xs text-slate-300 mt-1" v-if="user.name">
           {{ user.name }} · 
-          <span class="font-medium text-slate-200 bg-slate-600/80 px-1.5 py-0.5 rounded text-[10px]">
+          <span class="font-medium text-slate-200 bg-slate-600/80 px-1.5 py-0.5 rounded text-[11px]">
             {{ user.role === 'admin' ? '主管' : '業務' }}
           </span>
         </p>
       </div>
 
-      <!-- 分頁切換 -->
-      <div class="flex bg-slate-800/60 p-0.5 rounded-lg border border-slate-600">
+      <!-- 分頁切換 (按鈕放大好按) -->
+      <div class="flex bg-slate-800/60 p-1 rounded-lg border border-slate-600">
         <button @click="switchTab('water')" 
           :class="currentTab === 'water' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
-          class="px-2.5 py-1 text-xs rounded-md transition-all">💧 水質</button>
+          class="px-3 py-1.5 text-xs sm:text-sm rounded-md transition-all">💧 水質</button>
         <button @click="switchTab('microbio')" 
           :class="currentTab === 'microbio' ? 'bg-slate-100 text-slate-800 font-bold shadow-xs' : 'text-slate-300 hover:text-white'" 
-          class="px-2.5 py-1 text-xs rounded-md transition-all">🦠 微生物</button>
+          class="px-3 py-1.5 text-xs sm:text-sm rounded-md transition-all">🦠 微生物</button>
       </div>
     </div>
 
     <!-- 狀態：檢查中 -->
     <div v-if="checking" class="text-center py-16 px-4">
-      <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-500 border-t-transparent mb-2"></div>
-      <p class="text-xs text-slate-500">正在極速啟動...</p>
+      <div class="inline-block animate-spin rounded-full h-7 w-7 border-3 border-slate-500 border-t-transparent mb-2"></div>
+      <p class="text-sm text-slate-500 font-medium">正在啟動系統...</p>
     </div>
 
     <!-- 狀態：未授權 -->
     <div v-else-if="!authorized" class="p-8 text-center">
-      <div class="w-10 h-10 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-2 text-lg font-bold border border-slate-200">✕</div>
-      <h2 class="text-sm font-bold text-slate-800">未在白名單授權中</h2>
+      <div class="w-10 h-10 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto mb-2 text-xl font-bold border border-slate-200">✕</div>
+      <h2 class="text-base font-bold text-slate-800">未在白名單授權中</h2>
       <p class="text-xs text-slate-500 mt-1">請提供此 LINE ID 給管理員加入：</p>
-      <div class="mt-3 p-2 bg-slate-50 rounded text-[11px] font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
+      <div class="mt-3 p-2 bg-slate-50 rounded text-xs font-mono text-slate-600 break-all border">{{ user.lineId }}</div>
     </div>
 
-    <!-- 狀態：主查詢介面 -->
-    <div v-else class="p-3.5 space-y-3">
+    <!-- 狀態：主查詢介面 (字體全面放大優化) -->
+    <div v-else class="p-3.5 space-y-3.5">
       
-      <!-- 篩選選單 (一行兩列排版) -->
-      <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2.5">
+      <!-- 篩選選單 (標籤與選單字體放大至 14px) -->
+      <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
         
         <!-- 第一行：業務員 ｜ 客戶代號 -->
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-2 gap-2.5">
           <!-- 業務員 -->
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">業務員</label>
+            <label class="block text-sm font-bold text-slate-700 mb-1">業務員</label>
             <select v-if="user.role === 'admin'" v-model="selectedRep" @change="onRepChange" 
-              class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:border-slate-500">
+              class="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white text-slate-800 font-medium focus:outline-none focus:border-slate-500 shadow-xs">
               <option value="ALL">全部業務員</option>
               <option v-for="rep in repList" :key="rep" :value="rep">{{ rep }}</option>
             </select>
-            <div v-else class="w-full border border-slate-200 rounded-md px-2 py-1.5 text-xs bg-slate-100 text-slate-700 font-semibold">
+            <div v-else class="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-sm bg-slate-100 text-slate-800 font-bold">
               {{ user.name }}
             </div>
           </div>
 
           <!-- 客戶代號 -->
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">客戶代號</label>
+            <label class="block text-sm font-bold text-slate-700 mb-1">客戶代號</label>
             <select v-model="selectedCustomer" @change="onCustomerChange" 
-              class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-xs bg-white text-slate-700 focus:outline-none focus:border-slate-500">
+              class="w-full border border-slate-300 rounded-lg px-2.5 py-2 text-sm bg-white text-slate-800 font-medium focus:outline-none focus:border-slate-500 shadow-xs">
               <option value="">-- 請選擇 --</option>
               <option v-for="c in filteredCustomers" :key="c" :value="c">{{ c }}</option>
             </select>
@@ -106,9 +111,9 @@
 
         <!-- 第二行：取樣點 -->
         <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">取樣點</label>
+          <label class="block text-sm font-bold text-slate-700 mb-1">取樣點</label>
           <select v-model="selectedPoint" @change="onPointChange" :disabled="!selectedCustomer" 
-            class="w-full border border-slate-300 rounded-md px-2.5 py-1.5 text-xs bg-white text-slate-700 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-slate-500">
+            class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white text-slate-800 font-medium disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:border-slate-500 shadow-xs">
             <option value="">-- 請選擇取樣點 --</option>
             <option v-for="p in pointList" :key="p" :value="p">{{ p }}</option>
           </select>
@@ -116,20 +121,20 @@
       </div>
 
       <!-- 讀取中指示 -->
-      <div v-if="fetchingDetail" class="text-center py-6">
-        <div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-500 border-t-transparent mb-1"></div>
-        <p class="text-xs text-slate-400">正在極速讀取檢驗數據...</p>
+      <div v-if="fetchingDetail" class="text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-6 w-6 border-2 border-slate-500 border-t-transparent mb-1.5"></div>
+        <p class="text-xs text-slate-500 font-medium">正在讀取檢驗數據...</p>
       </div>
 
       <!-- 查詢結果：左右滑動輪播泡泡卡片 (最新 5 期) -->
-      <div v-else-if="historyList.length > 0" class="space-y-2">
-        <div class="flex justify-between items-center text-xs text-slate-500 px-1">
-          <span class="font-semibold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
+      <div v-else-if="historyList.length > 0" class="space-y-2.5">
+        <div class="flex justify-between items-center px-1">
+          <span class="text-sm font-bold text-slate-700">歷史紀錄 (共 {{ historyList.length }} 期)</span>
           
-          <div class="flex items-center gap-1.5">
-            <button @click="scrollPrev" title="上一期" class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold transition">‹</button>
-            <span class="text-[11px] text-slate-400">左右滑動</span>
-            <button @click="scrollNext" title="下一期" class="w-5 h-5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center text-xs font-bold transition">›</button>
+          <div class="flex items-center gap-2">
+            <button @click="scrollPrev" title="上一期" class="w-6 h-6 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-800 flex items-center justify-center text-sm font-bold transition shadow-xs">‹</button>
+            <span class="text-xs text-slate-500 font-medium">左右滑動</span>
+            <button @click="scrollNext" title="下一期" class="w-6 h-6 rounded-md bg-slate-200 hover:bg-slate-300 text-slate-800 flex items-center justify-center text-sm font-bold transition shadow-xs">›</button>
           </div>
         </div>
 
@@ -139,63 +144,65 @@
           @mouseleave="stopDrag" 
           @mouseup="stopDrag" 
           @mousemove="onDrag"
-          class="flex overflow-x-auto snap-x snap-mandatory gap-2.5 pb-2 pt-0.5 no-scrollbar grab-cursor -mx-1 px-1">
+          class="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-2 pt-0.5 no-scrollbar grab-cursor -mx-1 px-1">
           
           <div v-for="(item, idx) in historyList" :key="idx" 
-            class="w-[88%] sm:w-[92%] flex-shrink-0 snap-center border border-slate-200 rounded-lg p-3 bg-white shadow-xs space-y-2.5 select-none">
+            class="w-[88%] sm:w-[92%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm space-y-3 select-none">
             
-            <!-- 卡片頂部：取樣日 -->
-            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-              <span class="text-xs font-semibold text-slate-700">
-                取樣日：<span class="text-slate-900 font-bold">{{ formatDate(item.sampleDate) }}</span>
+            <!-- 卡片頂部：取樣日 (大字突出) -->
+            <div class="flex justify-between items-center border-b border-slate-100 pb-2.5">
+              <span class="text-sm font-bold text-slate-700">
+                取樣日：<span class="text-slate-900 text-base font-extrabold">{{ formatDate(item.sampleDate) }}</span>
               </span>
-              <span class="px-2 py-0.5 rounded text-[10px] font-medium" 
-                :class="idx === 0 ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-500 border border-slate-200'">
+              <span class="px-2.5 py-0.5 rounded-md text-xs font-semibold" 
+                :class="idx === 0 ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'">
                 {{ idx === 0 ? '最新一期' : '前期 ' + idx }}
               </span>
             </div>
 
-            <!-- 1. 水質數據 (嚴格按照 Excel 原始順序固定排序) -->
-            <div v-if="currentTab === 'water'" class="space-y-2">
-              <!-- 重點指標 pH 與 導電度 -->
-              <div class="grid grid-cols-2 gap-2" v-if="getCoreVal(item, 'ph') !== null || getCoreVal(item, 'cond') !== null">
-                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="getCoreVal(item, 'ph') !== null">
-                  <span class="text-[11px] text-slate-500 font-medium block">pH</span>
-                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getCoreVal(item, 'ph')) }}</span>
+            <!-- 1. 水質數據 -->
+            <div v-if="currentTab === 'water'" class="space-y-3">
+              <!-- 重點指標 pH 與 導電度 (醒目大牌) -->
+              <div class="grid grid-cols-2 gap-2.5" v-if="getCoreVal(item, 'ph') !== null || getCoreVal(item, 'cond') !== null">
+                <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center" v-if="getCoreVal(item, 'ph') !== null">
+                  <span class="text-xs font-bold text-slate-500 block">pH</span>
+                  <span class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{{ formatNumber(getCoreVal(item, 'ph')) }}</span>
                 </div>
-                <div class="bg-slate-50 p-2 rounded border border-slate-200 text-center" v-if="getCoreVal(item, 'cond') !== null">
-                  <span class="text-[11px] text-slate-500 font-medium block">導電度 (Cond.)</span>
-                  <span class="text-base font-bold text-slate-800">{{ formatNumber(getCoreVal(item, 'cond')) }}</span>
+                <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-center" v-if="getCoreVal(item, 'cond') !== null">
+                  <span class="text-xs font-bold text-slate-500 block">導電度 (Cond.)</span>
+                  <span class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{{ formatNumber(getCoreVal(item, 'cond')) }}</span>
                 </div>
               </div>
 
-              <!-- 全部檢驗項目 (根據 Excel 水質單欄位順序固定排列) -->
-              <div class="grid grid-cols-2 gap-1 text-xs">
+              <!-- 全部檢驗項目 (依 Excel 原始順序排列，大字清晰) -->
+              <div class="grid grid-cols-2 gap-2">
                 <div v-for="entry in getSortedWaterItems(item)" :key="entry.label" 
-                  class="flex justify-between items-center p-1.5 bg-slate-50/70 rounded border border-slate-100">
-                  <span class="text-slate-600 font-medium pr-1 truncate" :title="entry.label">{{ entry.label }}</span>
-                  <span class="font-bold text-slate-800 text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
+                  class="flex justify-between items-center p-2.5 bg-slate-50/90 rounded-lg border border-slate-100">
+                  <span class="text-xs sm:text-sm font-bold text-slate-600 pr-1 truncate" :title="entry.label">{{ entry.label }}</span>
+                  <span class="font-bold text-slate-900 text-sm sm:text-base font-mono text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
                 </div>
               </div>
             </div>
 
             <!-- 2. 微生物數據 -->
-            <div v-if="currentTab === 'microbio'" class="space-y-2">
-              <div class="bg-slate-50 border border-slate-200 p-3 rounded-lg text-center">
-                <span class="text-[11px] text-slate-500 font-semibold block">總菌數 (CFU/mL)</span>
-                <span class="text-xl font-bold text-slate-800 mt-1 block">
-                  {{ item.colonyCount }} × 10<sup class="text-sm font-semibold">{{ item.dilutionExp !== null && item.dilutionExp !== undefined ? item.dilutionExp : '0' }}</sup>
+            <div v-if="currentTab === 'microbio'" class="space-y-3">
+              <!-- 總菌數大牌 -->
+              <div class="bg-slate-50 border border-slate-200 p-3.5 rounded-xl text-center">
+                <span class="text-xs font-bold text-slate-500 block uppercase tracking-wider">總菌數 (CFU/mL)</span>
+                <span class="text-3xl font-black text-slate-900 mt-1 block">
+                  {{ item.colonyCount }} × 10<sup class="text-lg font-bold text-slate-600">{{ item.dilutionExp !== null && item.dilutionExp !== undefined ? item.dilutionExp : '0' }}</sup>
                 </span>
               </div>
 
-              <div class="grid grid-cols-2 gap-1.5 text-xs">
-                <div class="flex justify-between items-center p-2 bg-slate-50/70 rounded border border-slate-100">
-                  <span class="text-slate-500">餘氯 (ppm)</span>
-                  <span class="font-semibold text-slate-700">{{ formatNumber(item.freeCl) }}</span>
+              <!-- 餘氯與總氯 -->
+              <div class="grid grid-cols-2 gap-2">
+                <div class="flex justify-between items-center p-2.5 bg-slate-50/90 rounded-lg border border-slate-100">
+                  <span class="text-xs sm:text-sm font-bold text-slate-600">餘氯 (ppm)</span>
+                  <span class="font-bold text-slate-900 text-sm sm:text-base font-mono">{{ formatNumber(item.freeCl) }}</span>
                 </div>
-                <div class="flex justify-between items-center p-2 bg-slate-50/70 rounded border border-slate-100">
-                  <span class="text-slate-500">總氯 (ppm)</span>
-                  <span class="font-semibold text-slate-700">{{ formatNumber(item.totalCl) }}</span>
+                <div class="flex justify-between items-center p-2.5 bg-slate-50/90 rounded-lg border border-slate-100">
+                  <span class="text-xs sm:text-sm font-bold text-slate-600">總氯 (ppm)</span>
+                  <span class="font-bold text-slate-900 text-sm sm:text-base font-mono">{{ formatNumber(item.totalCl) }}</span>
                 </div>
               </div>
             </div>
@@ -221,14 +228,29 @@
         const selectedCustomer = ref('');
         const selectedPoint = ref('');
 
-        const waterCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {} });
-        const microbioCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {} });
+        const waterCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {}, fileUpdatedAt: '' });
+        const microbioCatalog = ref({ reps: [], customers: [], repCustomerMap: {}, customerPointsMap: {}, fileUpdatedAt: '' });
         
         const queryMemoryCache = {};
         const historyList = ref([]);
         const sliderRef = ref(null);
 
-        // ★ Excel 水質單標準項目絕對排序表 (嚴格按照 Excel 第 7~87 欄順序)
+        // ★ 核心功能：顯示「原始 Excel 檔案在雲端最後存檔更新的時間」
+        const lastFileUpdateTime = computed(() => {
+          const raw = activeCatalog.value ? (activeCatalog.value.fileUpdatedAt || activeCatalog.value.updatedAt) : '';
+          if (!raw) return '讀取中...';
+          const d = new Date(raw);
+          if (isNaN(d.getTime())) return String(raw);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          const hours = d.getHours();
+          const minutes = String(d.getMinutes()).padStart(2, '0');
+          const ampm = hours >= 12 ? 'pm' : 'am';
+          const h12 = String(hours % 12 || 12).padStart(2, '0');
+          return `${y}/${m}/${day} ${ampm}${h12}:${minutes}`;
+        });
+
         const WATER_FIELD_ORDER = [
           'pH', 'Cond.', 'P-A', 'M-A', 'T-H', 'T-H(濾後)', 'Ca-H', 'Ca-H(濾後)',
           'Cl', 'SO4', 'SiO2', 'SiO2(濾後)', 'TFe', 'Fe(濾後)',
@@ -294,20 +316,18 @@
           return res;
         };
 
-        // ★ 核心函式：將水樣檢驗項目依照 Excel 原始標題順序嚴格排序輸出
         const getSortedWaterItems = (item) => {
           const items = getDisplayItems(item);
           const entries = [];
 
           for (let rawKey in items) {
             const label = getExactLabel(rawKey);
-            if (isCoreField(label)) continue; // pH 與 導電度 已呈現在頂部
+            if (isCoreField(label)) continue;
             const val = items[rawKey];
             if (val === null || val === undefined || val === '') continue;
             entries.push({ label, val });
           }
 
-          // 嚴格依據 WATER_FIELD_ORDER 的順序排序
           entries.sort((a, b) => {
             const idxA = WATER_FIELD_ORDER.indexOf(a.label);
             const idxB = WATER_FIELD_ORDER.indexOf(b.label);
@@ -511,7 +531,7 @@
           onRepChange, onCustomerChange, onPointChange,
           formatNumber, formatDate, getDisplayItems, getExactLabel, isCoreField, getCoreVal,
           sliderRef, scrollPrev, scrollNext, startDrag, stopDrag, onDrag,
-          getSortedWaterItems
+          getSortedWaterItems, lastFileUpdateTime
         };
       }
     }).mount('#app');
