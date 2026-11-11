@@ -146,10 +146,11 @@
           <div v-for="(item, idx) in historyList" :key="idx" 
             class="w-[94%] sm:w-[96%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm space-y-3 select-none">
             
-            <!-- 卡片頂部：取樣日 (同日有多瓶水樣時自動標示樣品編號) -->
+            <!-- 卡片頂部：取樣日 -->
             <div class="flex justify-between items-center border-b border-slate-100 pb-2">
               <span class="text-sm font-bold text-slate-700 flex items-center">
                 取樣日：<span class="text-slate-900 text-base font-extrabold">{{ formatDate(item.sampleDate) }}</span>
+                <!-- 若同日真有兩瓶不同水樣，自動顯示樣品標記 -->
                 <span v-if="item.sampleLabel" class="ml-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                   {{ item.sampleLabel }}
                 </span>
@@ -168,7 +169,7 @@
                   class="flex justify-between items-center px-2.5 py-2 rounded-lg border">
                   <!-- 項目名稱：黑色 -->
                   <span class="text-sm font-bold text-slate-950 text-left truncate pr-1" :title="entry.label">{{ entry.label }}</span>
-                  <!-- 檢驗數值：灰色 -->
+                  <!-- 檢驗數值：灰色（包含數值、$、未完成符號等均如實呈現） -->
                   <span class="font-extrabold text-slate-600 text-base font-mono text-right whitespace-nowrap">{{ formatNumber(entry.val) }}</span>
                 </div>
               </div>
@@ -292,7 +293,6 @@
           return res;
         };
 
-        // ★ 核心：不再特別抽離 pH 與 Cond.，全部統一依照標準順序輸出
         const getSortedWaterItems = (item) => {
           const items = getDisplayItems(item);
           const entries = [];
@@ -425,7 +425,6 @@
           }
         };
 
-        // 業務員選項：一般業務僅列出自己，管理者可查看所有業務員
         const repList = computed(() => {
           if (user.value.role !== 'admin') {
             return user.value.name ? [user.value.name] : [];
@@ -433,7 +432,6 @@
           return ensureArray(activeCatalog.value.reps);
         });
 
-        // 輔助函式：自已載入的目錄中以姓名對應客戶，內建前後空白與大小寫相容處理（0 額外流量與延遲）
         const getRepCustomers = (repName, repMap) => {
           if (!repName || !repMap) return [];
           if (repMap[repName]) return ensureArray(repMap[repName]);
@@ -446,7 +444,6 @@
           return [];
         };
 
-        // 客戶代號 (廠區) 自動化篩選
         const filteredCustomers = computed(() => {
           const cat = activeCatalog.value;
           const targetRep = user.value.role !== 'admin' ? user.value.name : selectedRep.value;
@@ -502,7 +499,7 @@
             // 依取樣日排序
             list.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
 
-            // ★ 智慧防重：數值 100% 完全相同才視為資料庫殘留重複；同日若檢驗數值不同則完整保留兩筆水樣
+            // ★ 僅過濾各項數值完全 100% 相同的殘留重複，不排除包含 '$' 的未完成正常水樣
             const cleanedList = [];
             for (const item of list) {
               const isDuplicate = cleanedList.some(existing => {
@@ -528,7 +525,7 @@
               }
             }
 
-            // ★ 為同取樣日的多瓶水樣自動標記「樣品 1」、「樣品 2」
+            // ★ 同取樣日若真有多瓶水樣，自動標記樣品編號
             const dateCountMap = {};
             cleanedList.forEach(item => {
               dateCountMap[item.sampleDate] = (dateCountMap[item.sampleDate] || 0) + 1;
