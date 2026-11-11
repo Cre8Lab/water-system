@@ -146,10 +146,13 @@
           <div v-for="(item, idx) in historyList" :key="idx" 
             class="w-[94%] sm:w-[96%] flex-shrink-0 snap-center border border-slate-200 rounded-xl p-3.5 bg-white shadow-sm space-y-3 select-none">
             
-            <!-- 卡片頂部：取樣日 -->
+            <!-- 卡片頂部：取樣日 (同日有多瓶水樣時自動標示樣品編號) -->
             <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-              <span class="text-sm font-bold text-slate-700">
+              <span class="text-sm font-bold text-slate-700 flex items-center">
                 取樣日：<span class="text-slate-900 text-base font-extrabold">{{ formatDate(item.sampleDate) }}</span>
+                <span v-if="item.sampleLabel" class="ml-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  {{ item.sampleLabel }}
+                </span>
               </span>
               <span class="px-2 py-0.5 rounded text-xs font-semibold" 
                 :class="idx === 0 ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'">
@@ -496,8 +499,52 @@
               if (data.samplePoint === selectedPoint.value) list.push(data);
             });
 
+            // 依取樣日排序
             list.sort((a, b) => new Date(b.sampleDate) - new Date(a.sampleDate));
-            const top5 = list.slice(0, 5);
+
+            // ★ 智慧防重：數值 100% 完全相同才視為資料庫殘留重複；同日若檢驗數值不同則完整保留兩筆水樣
+            const cleanedList = [];
+            for (const item of list) {
+              const isDuplicate = cleanedList.some(existing => {
+                if (existing.sampleDate !== item.sampleDate) return false;
+                if (currentTab.value === 'water') {
+                  const itmA = existing.items || {};
+                  const itmB = item.items || {};
+                  const kA = Object.keys(itmA);
+                  const kB = Object.keys(itmB);
+                  if (kA.length !== kB.length) return false;
+                  return kA.every(k => itmA[k] === itmB[k]);
+                } else {
+                  return existing.colonyCount === item.colonyCount &&
+                         existing.dilutionExp === item.dilutionExp &&
+                         existing.freeCl === item.freeCl &&
+                         existing.totalCl === item.totalCl &&
+                         existing.cfu === item.cfu;
+                }
+              });
+
+              if (!isDuplicate) {
+                cleanedList.push(item);
+              }
+            }
+
+            // ★ 為同取樣日的多瓶水樣自動標記「樣品 1」、「樣品 2」
+            const dateCountMap = {};
+            cleanedList.forEach(item => {
+              dateCountMap[item.sampleDate] = (dateCountMap[item.sampleDate] || 0) + 1;
+            });
+
+            const dateCurrentIndexMap = {};
+            cleanedList.forEach(item => {
+              if (dateCountMap[item.sampleDate] > 1) {
+                dateCurrentIndexMap[item.sampleDate] = (dateCurrentIndexMap[item.sampleDate] || 0) + 1;
+                item.sampleLabel = `樣品 ${dateCurrentIndexMap[item.sampleDate]}`;
+              } else {
+                item.sampleLabel = '';
+              }
+            });
+
+            const top5 = cleanedList.slice(0, 5);
 
             queryMemoryCache[cacheKey] = top5;
             historyList.value = top5;
